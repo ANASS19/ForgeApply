@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title description">
+  <title id="title">ForgeApply</title>
+  <desc id="description">Local-first AI application workspace. Prepare, verify, review. Dark navy banner with cyan and pale blue browser workflow artwork.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#080f20"/><stop offset="1" stop-color="#112742"/></linearGradient>
+    <linearGradient id="accent"><stop stop-color="#37c7eb"/><stop offset="1" stop-color="#a7bfff"/></linearGradient>
+  </defs>
+  <rect width="1200" height="300" rx="16" fill="url(#background)"/>
+  <path d="M16 1H1184 M16 299H1184" stroke="#39d9ef" stroke-opacity=".55" stroke-width="2"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="58" y="61" font-size="13" font-weight="600" letter-spacing="3.5" fill="#63e1f5">FORGE AI / BROWSER WORKFLOWS</text>
+    <text x="54" y="135" font-size="62" font-weight="700" fill="#eff8ff">Forge<tspan fill="#8dbbff">Apply</tspan></text>
+    <text x="58" y="180" font-size="21" fill="#bacde5">Local-first AI application workspace.</text>
+    <rect x="58" y="220" width="652" height="34" rx="7" fill="#fff" fill-opacity=".055"/>
+    <text x="76" y="242" font-size="13" letter-spacing="1.5" fill="url(#accent)">ENGLISH + ITALIAN · OLLAMA / API · HUMAN REVIEW</text>
+  </g>
+  <g transform="translate(852 53)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="270" height="173" rx="12" stroke="#64daf4" stroke-opacity=".6" stroke-width="2" fill="#0b182c"/>
+    <path d="M0 31H270" stroke="#64daf4" stroke-opacity=".3"/>
+    <g fill="#63e1f5" stroke="none"><circle cx="18" cy="16" r="3"/><circle cx="31" cy="16" r="3"/><circle cx="44" cy="16" r="3"/></g>
+    <g stroke="#8dbbff" stroke-width="2"><rect x="24" y="54" width="102" height="13" rx="4" opacity=".55"/><rect x="24" y="80" width="145" height="13" rx="4" opacity=".4"/><path d="M24 116H116 M24 134H95" opacity=".35"/></g>
+    <circle cx="207" cy="120" r="29" stroke="#63e1f5" stroke-width="2" fill="#123247"/>
+    <path d="m194 120 9 9 18-20" stroke="#63e1f5" stroke-width="3"/>
+    <path d="M18 202H250" stroke="url(#accent)" stroke-opacity=".4"/>
+    <g fill="#63e1f5" stroke="#112742" stroke-width="4"><circle cx="30" cy="202" r="7"/><circle cx="134" cy="202" r="7"/><circle cx="238" cy="202" r="7" fill="#a7bfff"/></g>
+  </g>
+</svg>

@@ -1,0 +1,20 @@
+<!doctype html><html lang="it"><meta charset="utf-8"><title>Modulo candidatura bilingue</title>
+<style>body{background:#0b1220;color:#deebfb;font:16px 'Segoe UI',sans-serif;max-width:700px;margin:40px auto;padding:20px}input,textarea{display:block;padding:12px;margin:8px 0 20px;width:95%;font:inherit}input[type=checkbox]{display:inline;width:auto}button{padding:12px}</style>
+<main><h1>AI Engineer - esempio locale</h1><p>Modulo sintetico: nessuna candidatura reale.</p>
+<form action="/submit" method="post">
+<fieldset><label>Livello di conoscenza della lingua inglese*Obbligatorio</label>
+<label><input type="radio" name="english" value="A2" required>Elementary (A2)</label>
+<label><input type="radio" name="english" value="B2">Professional working (B2)</label>
+<label><input type="radio" name="english" value="C1">Full professional working (C1)</label></fieldset>
+<label>Paese di residenza*<select id="country" required><option value="">Seleziona</option><option value="it">Italia</option><option value="fr">Francia</option></select></label>
+<fieldset><legend>Competenze tecniche</legend><label><input id="skill_python" type="checkbox" value="Python">Python</label><label><input id="skill_unknown" type="checkbox" value="Unknown">UnknownTechnology</label></fieldset>
+<label for="nome">Nome<span>*Obbligatorio</span></label><input id="nome" name="first_name" required>
+<label for="cognome">Cognome<span>*Obbligatorio</span></label><input id="cognome" name="last_name" required>
+<label for="email">E-mail<span>*Obbligatorio</span></label><input id="email" type="email" required>
+<label for="telefono">Telefono<span>*Obbligatorio</span></label><input id="telefono" type="tel" required>
+<label>Indirizzo*Obbligatorio<input id="address" required></label>
+<label>Lettera di motivazione*Obbligatorio<textarea id="motivation" required rows="5"></textarea></label>
+<label>Quanti anni di esperienza con Python?*Obbligatorio<input id="python_years" type="number" required min="0"></label>
+<label>Carica il CV*Obbligatorio<input id="cv" type="file" required accept=".pdf,.docx"></label>
+<label><input id="privacy" type="checkbox" required>Accetto il trattamento dei dati e l'informativa privacy</label>
+<p><button type="submit">Invia la candidatura</button></p></form></main></html>

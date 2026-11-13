@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>ForgeApply controlled application</title>
+<style>body{font:16px system-ui;max-width:800px;margin:40px auto;background:#0b1220;color:#dae6f6}label{display:block;margin:16px}button,input,select{padding:10px}</style>
+<main><h1>Controlled local application fixture</h1><p>Test data remains on this local server. Final submission is never required.</p>
+<form onsubmit="event.preventDefault();firstPage()">
+<label>First name<input name="first_name" required></label><label>Last name<input name="last_name" required></label>
+<label>Email address<input name="email" type="email" required></label><label>Phone<input name="phone" required></label>
+<label>City<input name="city" required></label><label>Country<select name="country" required><option value="">Choose</option><option>Italy</option></select></label>
+<label for="resume">Resume</label><input id="resume" type="file" required style="display:none"><button>Next</button>
+</form></main>
+<script>
+function firstPage(){
+  sessionStorage.setItem('cv',document.querySelector('#resume').files[0].name);
+  document.querySelector('main').innerHTML=`<h1>Screening details</h1><form onsubmit="event.preventDefault();review()">
+  <label>Italian language proficiency<select required><option value="">Choose</option><option>Beginner</option><option>Intermediate</option><option>Fluent</option></select></label>
+  <label>Highest completed education<input required></label><button>Review</button></form>`;
+}
+function review(){
+  document.querySelector('main').innerHTML=`<h1>Final review - controlled local fixture</h1>
+  <p>Attachment: ${sessionStorage.getItem('cv')}</p><button onclick="send()">Submit application</button>`;
+}
+function send(){fetch('/submit',{method:'POST'}).then(()=>document.querySelector('main').textContent='Application received by controlled fixture');}
+</script></html>

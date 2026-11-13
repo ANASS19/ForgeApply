@@ -1,81 +1,85 @@
-# ForgeApply — Local AI Job Application Workspace
+<div align="center">
 
-A complete runnable **local application workspace** with an embedded browser agent, local/hosted LLM inference, screenshot capture, deterministic/AI-assisted form filling, job-board discovery, CSV import/export, resume management and auditable application tracking.
+![ForgeApply — local-first AI application workspace](docs/assets/banner.svg)
 
-> **Scope:** A working local tool, not a promise that LinkedIn/Indeed permit unattended mass submission. Sites and employers differ. The app handles supported forms and asks for final submission approval; LinkedIn/Indeed final submission remains manual. No CAPTCHA evasion, anti-bot bypass, or credential collection.
+### Prepare carefully. Apply with confidence.
 
-## Windows: run in 3 steps
+[Getting started](docs/USAGE.md) · [Chrome extension](extension/README.md) · [What's new](CHANGELOG.md) · [Verified capabilities](RELEASE_READINESS.md)
 
-1. Install **Python 3.11+** and optionally [Ollama](https://ollama.com/). For local form understanding, run `ollama pull qwen3:4b`; choose a vision-capable Ollama model such as `gemma3:4b` if you want screenshot understanding (check installed Ollama tags).
-2. Unzip this project, then double-click **`start_windows.bat`**. The first run creates a venv, installs requirements and downloads Playwright Chromium.
-3. Open **http://127.0.0.1:8765** in your browser. The app stores its local SQLite database, resumes and Chromium login state under `%USERPROFILE%\.forgeapply`.
+[![Tests](https://github.com/ANASS19/ForgeApply/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/ANASS19/ForgeApply/actions/workflows/tests.yml)
+![Preview 0.4.1](https://img.shields.io/badge/preview-0.4.1-8dbbff?labelColor=112742)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-63e1f5?labelColor=112742)
+![Local first](https://img.shields.io/badge/local--first-human%20review-63e1f5?labelColor=112742)
 
-PowerShell manual setup:
+</div>
+
+---
+
+ForgeApply is a Windows-first application workspace that helps you prepare permitted job applications in **English and Italian**. Keep your profile and documents locally, fill verified facts, review AI-assisted answers, and track your applications in one dashboard.
+
+**Development preview:** tested with real Chromium against controlled forms. Live employer completion, every ATS variant, and production reliability are not guaranteed. Final submission stays under your control. [Read the evidence and release gaps](RELEASE_READINESS.md).
+
+## What you can do
+
+| Workflow | Included in this preview |
+|---|---|
+| Keep a reusable profile | Contact details, multiple employment/education records, certifications, languages, skills and EN/IT CVs |
+| Fill an existing Chrome tab | Compact extension, persistent connection, Keep open side panel, reviewed missing answers |
+| Prepare complex forms | Native/custom selects, radio groups, factual checkboxes, dynamic fields, repeated sections, multi-page review |
+| Use your preferred model | Local Ollama, local or hosted OpenAI-compatible endpoints, or deterministic filling without AI |
+| Draft application materials | Editable bilingual CV/letter drafts and reviewed local PDF/text export |
+| Track opportunities | SQLite history, job queue, CSV import/export and public Greenhouse/Lever/Ashby feeds |
+
+Unknown qualifications and personal facts are never intentionally guessed. Legal/consent and protected demographic fields stay manual. LinkedIn/Indeed native inspection and autofill are disabled; use employer application pages where assistance is permitted.
+
+## Start on Windows
+
+Install **Python 3.13** and Git, then:
 
 ```powershell
-py -3.11 -m venv .venv
+git clone https://github.com/ANASS19/ForgeApply.git
+cd ForgeApply
+py -3.13 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe -m playwright install chromium
 .venv\Scripts\python.exe -m forgeapply
 ```
 
-Mac/Linux: `sh start_linux_mac.sh`, then open `http://127.0.0.1:8765`.
+Open **http://127.0.0.1:8765**. You can also use `start_windows.bat` after downloading and extracting the source. Python 3.11+ is supported; Windows 3.13 is the local validation environment. Linux/macOS users can use `sh start_linux_mac.sh`; macOS has not been independently verified.
 
-## Practical workflow
+## Your first application
 
-1. **Candidate & CVs** — supply your verified info. Upload one English and one Italian resume (PDF or DOCX). Uncertain legal/immigration questions should remain blank until verified.
-2. **Screening Answers** — add reusable regex patterns with truthful answers, such as `(?i)years.*python` → your actual Python experience.
-3. **Job Sources** — add public company job-board slugs for Greenhouse, Lever, or Ashby. Sync to discover active listings directly via public APIs. Or import a CSV of listings. LinkedIn and Indeed have no general, unrestricted applicant-facing submission API.
-4. **Job Queue** — review titles, scores, statuses and external links. Click **Open** to launch the separate persistent Playwright Chromium browser.
-5. **Browser Agent** — manually sign in to a job site in this visible browser, then click **Auto-fill known fields**. Form fields are detected from live DOM labels and filled deterministically. Unknown fields may be answered by your configured LLM using verified facts. **AI + vision fill** sends a screenshot to a *vision-capable* model. Unanswered questions are shown in the dashboard.
-6. **Next / Review** progresses supported multi-page forms. **Upload EN/IT CV** chooses the locally saved resume for that language.
-7. For LinkedIn/Indeed, click the final Submit button in the visible browser, verify success, then mark **I submitted it manually** in the dashboard. For supported employer websites, select explicit approval mode and click **Submit / confirm**; the app only marks success when the page shows confirmation.
-8. **Export CSV** for a complete application record. A submitted status cannot be accidentally reverted during re-import.
+1. In **Candidate & CVs**, enter verified contact/background facts and upload your documents.
+2. At `chrome://extensions`, enable Developer mode → **Load unpacked** → choose this repository's **extension** folder.
+3. Generate a code in dashboard **AI Settings → Chrome extension**, then enter it once in the assistant. The connection stays saved until disconnected or revoked.
+4. Open a permitted application page. Open ForgeApply, choose **Keep open**, then **Prepare & Fill**.
+5. Enter missing facts and review drafts → **Fill reviewed answers**. Choose a CV using **Attach CV / document**.
+6. Use **Continue to next step** and repeat. Inspect the employer's final review and submit manually if you choose.
 
-## Inference
+Practice first at dashboard `/demo/en` or `/demo/it`; final submission is disabled. The [usage guide](docs/USAGE.md) includes model setup, realistic multi-page practice, upgrades and troubleshooting. [Guida rapida in italiano](docs/USAGE.md#guida-rapida-in-italiano).
 
-- **Ollama:** local `POST http://127.0.0.1:11434/api/chat`, JSON outputs, configured via AI Settings. Works offline when the model is downloaded. Vision requires a multimodal Ollama model.
-- **Hosted:** OpenAI-compatible `POST /v1/chat/completions`. Configure provider `openai`, model, and optional base URL. Set `FORGEAPPLY_API_KEY` (or `OPENAI_API_KEY`) in the process environment. No API key is saved in SQLite.
-- **Deterministic first:** personal facts and your saved screening answers are filled before any LLM call. LLM never receives account cookies or passwords. HTML page text and optional screenshots may contain sensitive information; choose hosted inference only if you accept that data transfer.
+## Choose your intelligence
 
-## Agent capabilities / limitations
+- **No AI:** turn off **Use configured AI for unfamiliar questions** in extension Settings → More options. Known fields still fill; enter unknown answers yourself.
+- **Ollama:** start Ollama, install a model, and select its exact name in AI Settings. `qwen3.5:9b` and `qwen3.5:4b` are measured advisory presets, not guaranteed requirements or safe autonomous decision makers.
+- **OpenAI-compatible:** select the provider, model and base URL. Hosted endpoints require HTTPS, explicit remote consent and an environment API key. Local compatible endpoints can be keyless. See [provider setup](docs/USAGE.md#configure-ai-optional).
 
-| Function | Status |
-|---|---|
-| Persistent browser, login, navigation | Implemented |
-| Detect form fields and labels | Implemented, DOM-first |
-| Click Easy Apply, Next, Review | Implemented with visible browser; may need manual site interaction |
-| Fill personal details and saved answers | Implemented |
-| AI-assisted questions (Ollama/hosted) | Implemented; results depend on model quality |
-| Screenshot capture and image understanding | Implemented; requires VLM for analysis |
-| OCR | Via model vision; no separate OCR engine |
-| CV file upload | Implemented for visible file input controls |
-| ATS discovery: Greenhouse, Lever, Ashby | Implemented public read-only feeds |
-| CSV import/export and local SQLite tracker | Implemented |
-| Automatically defeat CAPTCHA/site security | Not supported |
-| Unrestricted LinkedIn/Indeed 100-job mass submission | Not supported or guaranteed |
-| Fully autonomous browser agent on arbitrary sites | Not guaranteed; app combines deterministic controls and model suggestions, not unconstrained arbitrary actions |
+The [synthetic benchmark](benchmarks/README.md) found factual errors with both tested models. AI output always needs review; evidence references do not prove an answer is correct.
 
-## Tests
+## Privacy and verification
 
-```bash
-python -m pytest -q
+Data is stored outside the repository under `%USERPROFILE%\.forgeapply` by default. The server binds to loopback; extension pairing is authenticated. No telemetry is implemented. SQLite, CVs and browser sessions rely on OS permissions and are **not application-encrypted**. Hosted inference can receive candidate facts and page content after opt-in; keep it off for local-only inference.
+
+**91 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, bilingual Workday-style fixtures, an Italian enterprise portal, missing answers, stale controls, pairing and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works.
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q
 ```
 
-API documentation at `http://127.0.0.1:8765/api/docs`.
+[Usage guide](docs/USAGE.md) · [Engineering reference](docs/ENGINEERING.md) · [Audit](AUDIT.md) · [Contributing](CONTRIBUTING.md)
 
-## Security
+## Project status and license
 
-The HTTP server binds **127.0.0.1 only**. Do not port-forward it, expose it publicly, or store it on a shared computer. Browser login cookies live in the local Chromium profile. Resumes and answers live only in your local folder unless you expressly send information to a hosted model. Never put private data or API keys into source control. Confirm work authorization answers yourself before using them in legal declarations.
+ForgeApply is part of the Forge AI project family. Multi-profile isolation, encrypted credentials, installers, unrestricted ATS support, scheduling and specialist-agent orchestration remain unfinished. The current implementation is one bounded preparation workflow, not a completed multi-agent platform.
 
-## Technical architecture
-
-- `forgeapply/app.py`: FastAPI server and local application API
-- `forgeapply/store.py`: SQLite schema, status auditing, normalization/dedup
-- `forgeapply/discovery.py`: company ATS discovery + scoring + CSV import
-- `forgeapply/browser.py`: persistent Playwright Chromium and live DOM form executor
-- `forgeapply/llm.py`: Ollama/OpenAI-compatible JSON decisions, optional screenshots
-- `static/`: responsive dark-blue dashboard
-- `tests/`: focused tests for data integrity, job parsing and app API
-
-This is a local application, not a ChatGPT-installed skill or a cloud scheduler. It is suitable for further packaging as a native executable or MCP server if you later want those integrations.
+A source license has not yet been selected. Public visibility alone does not grant unrestricted reuse rights. No Chrome Web Store or PyPI package is published by this preview.

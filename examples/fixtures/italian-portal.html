@@ -1,0 +1,38 @@
+<!doctype html><html lang="it"><meta charset="utf-8"><title>Portale italiano - fixture sintetica</title>
+<style>body{font:16px system-ui;max-width:780px;margin:30px auto;padding:20px;background:#0b1220;color:#dfebff}label{display:block;margin:18px 0}input,select{display:block;width:95%;padding:9px}button{padding:12px}.error{color:#ffad86}</style>
+<main><h1>Modulo di candidatura - esempio locale</h1><p>Nessuna candidatura reale. Dati sintetici.</p>
+<form id="application" onsubmit="event.preventDefault();advance()">
+<div role="group" aria-label="Stai candidandoti per -">
+<label>Curriculum Vitae<input type="file" accept=".pdf,.docx"></label>
+<label>Canale*<select id="applicantSource" required><option value="">Seleziona</option><option value="source-7">LinkedIn</option><option value="source-9">Sito aziendale</option></select></label>
+<label>Hai mai lavorato per Synthetic Employer, per uno dei nostri brand, o per una delle nostre precedenti entità giuridiche?*<select id="haveYouWorkedForEmployer" required><option value="">Seleziona</option><option value="previous-1">Sì</option><option value="previous-0">No</option></select></label>
+<label>Paese*<select id="country" required><option value="it-country">Italia</option><option value="fr-country">Francia</option></select></label>
+<div role="group" aria-label="cntryFields">
+<label>Nome*<input id="cntryFields.firstName" required></label><label>Cognome*<input id="cntryFields.lastName" required></label>
+<label>Preferisci selezionare uno dei tuoi nomi/cognomi?<select id="cntryFields.preferredName"><option value="no">No</option><option value="yes">Sì</option></select></label>
+<label>Via/Piazza<input id="cntryFields.addressLine1"></label><label>Codice Postale<input id="cntryFields.postalCode"></label>
+<label>Città<input id="cntryFields.city"></label><label>Provincia<select id="cntryFields.region"><option value="">Seleziona</option><option value="opaque-mi">Milano</option><option value="opaque-rm">Roma</option></select></label>
+</div>
+<label>Indirizzo email*<input id="email" required type="email"></label>
+<label>Tipo di dispositivo telefonico*<select id="deviceType" required><option value="">Seleziona</option><option value="device-1">Cellulare</option><option value="device-2">Fisso</option></select></label>
+<div role="group" aria-label="phoneWidget">
+<label>Prefisso*<select id="phoneWidget.countryPhoneCode" required><option value="">Seleziona</option><option value="IT">Italia (+39)</option><option value="FR">Francia (+33)</option></select></label>
+<label>Numero di telefono*<input id="phoneWidget.phoneNumber" required pattern="[0-9]{10}"></label>
+</div>
+<label>Social Network URL<input id="socialNetworkAccountURL"></label>
+<label>Disponibile per iniziare a lavorare da<input id="workStartDate" type="datetime-local"></label>
+<label>Sei disponibile al trasferimento?<select id="availableForRelocation"><option value="">Seleziona</option><option>Sì</option><option>No</option></select></label>
+<label>Hai un domicilio diverso dalla tua residenza?<select id="isDomicileAvailable"><option value="">Seleziona</option><option>Sì</option><option>No</option></select></label>
+<h2>Ulteriori informazioni</h2>
+<label>Sesso<select id="gender"><option value="">Seleziona</option><option>Preferisco non rispondere</option></select></label>
+<label>Data di nascita*<input id="dateOfBirth" placeholder="GG/MM/AAAA" required></label>
+<label>Paese di nascita<select id="birthCountry"><option value="IT">Italia</option><option value="FR">Francia</option></select></label>
+<label>Regione di nascita<select id="birthRegion"><option value="">Seleziona</option><option>Lombardia</option></select></label>
+<label>Città di nascita<input id="cityOfBirth"></label>
+<label>Stato civile<select id="maritalStatus"><option value="">Seleziona</option><option>Preferisco non rispondere</option></select></label>
+<label>Cittadinanza<select id="citizenship"><option value="">Seleziona</option><option>Italia</option></select></label>
+<label>Nazionalità<select id="nationality"><option value="IT">Italia</option><option value="FR">Francia</option></select></label>
+<label>Ulteriori nazionalità<input id="additionalNationality"></label>
+<label>Disabilità<select id="disabilityIdentity"><option value="">Seleziona</option><option>Preferisco non rispondere</option></select></label>
+</div><p class="error" role="alert"></p><button type="submit">Avanti</button></form></main>
+<script>let saves=0;function advance(){saves++;document.querySelector('main').innerHTML='<h1>Revisione</h1><p>Verifica i dati. Nessuna candidatura inviata.</p><button disabled>Invia candidatura</button>';}</script></html>

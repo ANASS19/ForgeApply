@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "ForgeApply Local Assistant",
+  "version": "0.4.1",
+  "description": "User-triggered, local-first application preparation. Restricted native job platforms remain manual.",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel", "contextMenus"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {"service_worker": "service-worker.js"},
+  "action": {"default_title": "ForgeApply", "default_popup": "panel.html"},
+  "side_panel": {"default_path": "panel.html?sidepanel=1"},
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:*"}
+}
