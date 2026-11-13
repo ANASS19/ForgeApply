@@ -38,6 +38,7 @@ jobs:
           test -f forgeapply/app.py
           rm .forgeapply-source.tar.xz.base64
           python -m pip install -r requirements.txt
+          python -m playwright install chromium
           python -m pytest -q
       - name: Commit source onto the existing default branch
         shell: bash

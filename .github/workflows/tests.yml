@@ -1,7 +1,7 @@
 name: ForgeApply tests
 on:
   push:
-    branches: [master]
+    branches: [master, 'feat/**']
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -15,12 +15,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.13']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python }}
           cache: 'pip'
       - name: Install requirements
         run: |

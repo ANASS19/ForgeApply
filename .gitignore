@@ -8,3 +8,9 @@ data/
 *.png
 browser_profile/
 resumes/
+screenshots/
+downloads/
+backups/
+*.pdf
+*.docx
+*.log

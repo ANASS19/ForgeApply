@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>ForgeApply control fixture</title>
+<style>body{font:16px system-ui;max-width:800px;margin:40px auto}label{display:block;margin:16px}button,input,select{padding:10px}[role=option]{padding:10px;cursor:pointer}</style>
+<h1>Controlled dynamic application</h1>
+<form onsubmit="event.preventDefault();document.querySelector('#error').textContent='Server validation: please review the selected country'">
+<label>Country<select name="country" required><option value="">Choose</option><option value="it">Italy</option><option>France</option></select></label>
+<label id="city-label">City</label><button type="button" role="combobox" aria-labelledby="city-label" aria-controls="cities" aria-expanded="false" aria-required="true" onclick="document.querySelector('#cities').hidden=false;this.setAttribute('aria-expanded','true')">Choose city</button>
+<div role="listbox" id="cities" hidden><div role="option" onclick="choose(this)">Milano</div><div role="option" onclick="choose(this)">Roma</div></div>
+<label>Date<input name="date" type="date" required></label>
+<label>Areas<select name="areas" multiple><option>ML</option><option>Backend</option><option>Vision</option></select></label>
+<label id="note-label">Notes</label><div role="textbox" contenteditable="true" aria-labelledby="note-label" style="border:1px solid;padding:15px"></div>
+<label>Show follow-up<input type="checkbox" name="reveal" onchange="document.querySelector('#follow-up').hidden=!this.checked"></label>
+<div id="follow-up" hidden><label>Portfolio<input name="portfolio" type="url" required></label></div>
+<label>Dynamic field<input name="dynamic" value=""></label><button type="button" onclick="document.querySelector('[name=dynamic]').outerHTML='<label>Replacement field<input name=replacement required></label>'">Replace field</button>
+<iframe title="Embedded details" name="details" src="/frame"></iframe>
+<p role="alert" id="error"></p><button>Next</button>
+</form>
+<script>function choose(option){const box=document.querySelector('[role=combobox]');box.textContent=option.textContent;box.setAttribute('aria-valuetext',option.textContent);box.setAttribute('aria-expanded','false');document.querySelector('#cities').hidden=true}</script>
+</html>
