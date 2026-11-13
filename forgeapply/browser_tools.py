@@ -27,6 +27,7 @@ class BrowserToolCall(BaseModel):
                     'press_key','hover','switch_tab','extract_text','validation','wait_navigation']
     target: BrowserTarget | None = None
     value: str = Field(default='', max_length=5000)
+    values: list[str] = Field(default_factory=list,max_length=20)
     url: str = Field(default='', max_length=2000)
     language: Literal['en','it'] = 'en'
     direction: Literal['up','down'] = 'down'

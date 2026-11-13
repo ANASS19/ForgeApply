@@ -27,7 +27,7 @@ Evidence-based gaps repaired in this change:
 | FastAPI and compact blue dashboard | Actual locally served dashboard exercised in Chromium; profile save, context view and safe settings defaults verified |
 | Persistent visible Chromium | Separate manual local smoke with the running app, actual local profile and authorized local CV; no employer submission |
 | Multi-page preparation | Served fixtures: fill, hidden CV upload, Next, missing-answer handoff, manual synthetic answers, resume, final review |
-| Native/custom dropdowns, date, rich text, conditional fields and iframe | Real Chromium against `examples/fixtures/controls.html`; same-origin iframe autofill and accessibility tree |
+| Native/custom dropdowns, multi-select, date, rich text, conditional fields and iframe | Real Chromium against `examples/fixtures/controls.html`; normalized label fallback, delayed-element waits, same-origin iframe autofill and accessibility tree |
 | Validation/failure/recovery | Required controls, changing DOM, stale UI, stalled Next, ambiguous/rejected upload, login/CAPTCHA handoff, browser restart and unexpected redirect gates |
 | Submission protections and receipts | Synthetic fixture only: unapproved and wrong-job/page actions blocked; success/failure proof; confirmed/ambiguous attempts not replayed after restart |
 | Candidate persistence/migrations | Isolated SQLite tests for profile/context/unknown values, regex scope, legacy answer migration and preserved statuses |
@@ -35,7 +35,7 @@ Evidence-based gaps repaired in this change:
 | OCR | Local Tesseract command adapter and missing-installation tests; no installed Tesseract/live recognition verified |
 | Greenhouse/Lever/Ashby discovery | Existing mocked public-feed tests; no employer application adapter or live submission verified |
 
-Windows Python 3.13.7 verification: **42 passed, 0 failed, 0 skipped**; one existing Starlette TestClient/httpx deprecation warning. `node --check static/app.js`, `git diff --check` and `python -m pip check` passed. The automated suite contains unit, API, actual-HTTP dashboard and served Chromium integration tests. A separate visible-browser smoke reached final review with the owner-authorized local profile/CV and recorded zero fixture submissions; the real dashboard displayed saved data with zero JavaScript errors. Local verification screenshots/results stay outside the repository under the application data directory. Live provider diagnostics returned an actionable unavailable error; no live model capability is claimed.
+Windows Python 3.13.7 verification: **43 passed, 0 failed, 0 skipped**; one existing Starlette TestClient/httpx deprecation warning. `node --check static/app.js`, `git diff --check` and `python -m pip check` passed. The automated suite contains unit, API, actual-HTTP dashboard and served Chromium integration tests. A separate visible-browser smoke reached final review with the owner-authorized local profile/CV and recorded zero fixture submissions; the real dashboard displayed saved data with zero JavaScript errors. An isolated server-termination smoke also reopened its persistent browser profile successfully. Local verification screenshots/results stay outside the repository under the application data directory. Live provider diagnostics returned an actionable unavailable error; no live model capability is claimed.
 
 ## Architecture and remaining release blockers
 

@@ -40,7 +40,7 @@ FIELD_SCRIPT = '''() => Array.from(document.querySelectorAll('input:not([type=hi
  return {index:i,token:e.dataset.forgeapplyField,tag:e.tagName.toLowerCase(),type:custom?'combobox':e.getAttribute('type')||'',name:e.name||'',
  id:id,label:(label||'').trim().slice(0,230),value:e.type==='password'?'':(custom?(e.getAttribute('aria-valuetext')||e.dataset.value||''):(e.value||e.isContentEditable&&e.innerText||'')).slice(0,140),
  checked:!!e.checked,valid:custom?(!(e.getAttribute('aria-required')==='true')||!!customValue):(e.validity?e.validity.valid:true),validation_message:e.validationMessage||'',
- required:e.required||e.getAttribute('aria-required')==='true',options:e.tagName==='SELECT'?Array.from(e.options).map(o=>({value:o.value,text:o.text})):[]}
+ required:e.required||e.getAttribute('aria-required')==='true',selected_values:e.tagName==='SELECT'?Array.from(e.selectedOptions).map(o=>o.value):[],options:e.tagName==='SELECT'?Array.from(e.options).map(o=>({value:o.value,text:o.text})):[]}
  })'''
 
 # These require deliberate user interaction, including when a broad saved regex matches.
@@ -284,7 +284,7 @@ class BrowserManager:
 
     def fill(self,i,value,snapshot_id=None): return self.call(self._fill(int(i),str(value),snapshot_id))
 
-    def _target_locator(self,target:BrowserTarget):
+    async def _target_locator(self,target:BrowserTarget):
         if target.field_index is not None:
             if target.field_index>=len(self._fields): raise ValueError('Inspect fields before acting')
             field=self._fields[target.field_index]
@@ -294,7 +294,15 @@ class BrowserManager:
         frames=self._page.frames
         if target.frame_index>=len(frames): raise ValueError('Frame no longer exists; inspect again')
         frame=frames[target.frame_index]
-        return frame.get_by_label(target.label,exact=True) if target.label is not None else frame.get_by_role(target.role,name=target.name,exact=True)
+        if target.label is None: return frame.get_by_role(target.role,name=target.name,exact=True)
+        locator=frame.get_by_label(target.label,exact=True)
+        if await locator.count()==0:
+            # Wrapping labels may include select option text in their accessible name.
+            # Reuse the normalized live label, requiring one exact semantic match.
+            matches=[f for f in await frame.evaluate(FIELD_SCRIPT) if f['label']==target.label]
+            if len(matches)==1:
+                return frame.locator(f'[data-forgeapply-field="{matches[0]["token"]}"]')
+        return locator
 
     async def _tool(self,call:BrowserToolCall):
         """One explicit bounded tool action, shared by UI/API and deterministic execution."""
@@ -329,15 +337,16 @@ class BrowserManager:
             if (parsed.scheme,parsed.netloc)!=self._allowed_origin:
                 raise PermissionError('Tool navigation is limited to the opened origin; open a new URL explicitly')
             return await self._navigate(call.url)
-        if call.action=='upload': return await self._upload_resume(call.language)
+        if call.action=='upload': return await self._upload_resume(call.language,call.target)
         if call.action=='scroll':
             await self._page.mouse.wheel(0,call.distance*(1 if call.direction=='down' else -1))
             return await self._snapshot()
-        locator=self._target_locator(call.target)
-        if await locator.count()!=1: raise ValueError('Target is missing or ambiguous; inspect again')
+        locator=await self._target_locator(call.target)
         if call.action=='wait':
             await locator.wait_for(state='visible',timeout=call.timeout_ms)
+            if await locator.count()!=1: raise ValueError('Target is ambiguous; inspect again')
             return await self._snapshot()
+        if await locator.count()!=1: raise ValueError('Target is missing or ambiguous; inspect again')
         if call.action=='hover':
             await locator.hover(timeout=call.timeout_ms)
         elif call.action in ('fill','select','check','type_text','clear','press_key','double_click'):
@@ -359,10 +368,11 @@ class BrowserManager:
                     raise PermissionError('Key is not allowed; form submission requires the approval control')
                 await locator.press(call.value,timeout=call.timeout_ms)
             elif call.action=='select':
-                try: await locator.select_option(label=call.value,timeout=call.timeout_ms)
-                except Exception: await locator.select_option(value=call.value,timeout=call.timeout_ms)
+                requested=call.values or [call.value]
+                try: await locator.select_option(label=requested,timeout=call.timeout_ms)
+                except Exception: await locator.select_option(value=requested,timeout=call.timeout_ms)
                 selected=await locator.evaluate('e=>Array.from(e.selectedOptions).flatMap(o=>[o.value,o.textContent])')
-                if call.value not in selected: raise RuntimeError('Option selection was not retained')
+                if not all(value in selected for value in requested): raise RuntimeError('Option selection was not retained')
             elif call.action=='check':
                 if call.value.lower() not in ('true','false'): raise ValueError('Check value must be true or false')
                 await locator.set_checked(call.value.lower()=='true',timeout=call.timeout_ms)
@@ -374,7 +384,16 @@ class BrowserManager:
                 text=(await locator.inner_text()).strip()
                 if text.lower() not in ('next','continue','review','avanti','continua','rivedi','back','previous','cancel','close','indietro','annulla'):
                     raise PermissionError('Only known navigation and dropdown controls may be clicked by general tools')
+            before=self._fingerprint(await self._snapshot())
             await locator.click(timeout=call.timeout_ms)
+            for _ in range(min(30,call.timeout_ms//100)):
+                await self._page.wait_for_timeout(100)
+                state=await self._snapshot()
+                if self._fingerprint(state)!=before:
+                    state['transition_verified']=True
+                    return state
+            state['transition_verified']=False
+            return state
         return await self._snapshot()
 
     def execute_tool(self,call:BrowserToolCall):
@@ -390,16 +409,22 @@ class BrowserManager:
         self._cancel.set()
         return {'requested':True,'note':'Preparation stops at the next observation boundary; no automatic submission'}
 
-    async def _upload_resume(self,lang='en'):
+    async def _upload_resume(self,lang='en',target:BrowserTarget|None=None):
         if self._job_id and not self._destination_allowed(): raise PermissionError('Review and approve this application destination before uploading documents')
         profile=get_setting('profile',{})
         path=Path(profile.get('resume_it' if lang=='it' else 'resume_en','')).expanduser()
         if not path.is_file(): raise FileNotFoundError('Configure an existing resume file in the Profile tab')
         candidates=[]
-        for frame in self._page.frames:
-            if frame.url not in ('about:blank','about:srcdoc') and urlparse(frame.url).netloc!=urlparse(self._page.url).netloc: continue
-            for element in await frame.locator('input[type=file]').element_handles():
-                if await element.is_enabled(): candidates.append(element)
+        if target:
+            element=await self._target_locator(target)
+            if await element.count()!=1 or await element.get_attribute('type')!='file' or not await element.is_enabled():
+                raise ValueError('Choose one enabled file input from the inspected form')
+            candidates=[element]
+        else:
+            for frame in self._page.frames:
+                if frame.url not in ('about:blank','about:srcdoc') and urlparse(frame.url).netloc!=urlparse(self._page.url).netloc: continue
+                for element in await frame.locator('input[type=file]').element_handles():
+                    if await element.is_enabled(): candidates.append(element)
         if not candidates: raise RuntimeError('No enabled file upload input found on this page')
         if len(candidates)>1:
             labelled=[]
@@ -452,7 +477,7 @@ class BrowserManager:
     def _fingerprint(snap:dict) -> str:
         data={'url':snap['url'],'text':snap.get('text',''),
               'form_actions':snap.get('form_actions',[]),'buttons':snap.get('buttons',[]),
-              'fields':[(f.get('label'),f.get('value'),f.get('checked'),f.get('valid')) for f in snap['fields']]}
+              'fields':[(f.get('label'),f.get('value'),f.get('checked'),f.get('valid'),f.get('selected_values')) for f in snap['fields']]}
         return hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
 
     def _progress(self,job_id:int,phase:str,action:str,detail:str='') -> None:
@@ -578,7 +603,8 @@ class BrowserManager:
                 continue
             if result['unknown'] or result['errors'] or result.get('suggestions'):
                 set_status(job_id,'blocked','Form questions require review: '+', '.join(result['unknown'])[:500])
-                return {'status':'needs_answers','unknown':result['unknown'],'errors':result['errors'],'trace':trace}
+                return {'status':'needs_answers','unknown':result['unknown'],'errors':result['errors'],
+                        'suggestions':result.get('suggestions',[]),'trace':trace}
             # Stop before ANY final submission action, even if it looks like the Next button.
             next_buttons=self._page.get_by_role('button',name=re.compile(r'^(Next|Continue|Review|Avanti|Continua|Rivedi)$',re.I))
             if await next_buttons.count()==0:

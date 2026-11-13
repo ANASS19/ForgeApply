@@ -112,6 +112,8 @@ def test_native_custom_dynamic_and_iframe_tools(tmp_path,fixture_site):
         assert next(f for f in state['fields'] if f['name']=='github')['value']=='https://example.org/fixture'
         def tool(**data): return manager.execute_tool(BrowserToolCall(**data))
         tool(action='fill',target={'label':'Date'},value='2026-11-13')
+        state=tool(action='select',target={'label':'Areas'},values=['ML','Vision'])
+        assert next(f for f in state['fields'] if f['name']=='areas')['selected_values']==['ML','Vision']
         tool(action='fill',target={'role':'textbox','name':'Notes'},value='Fixture notes')
         tool(action='check',target={'label':'Show follow-up'},value='true')
         state=tool(action='fill',target={'label':'Portfolio'},value='https://example.org/portfolio')
@@ -120,6 +122,10 @@ def test_native_custom_dynamic_and_iframe_tools(tmp_path,fixture_site):
         assert len(tree['frames'])==2 and 'GitHub' in tree['frames'][1]['tree']
         tool(action='scroll',direction='down')
         tool(action='wait',target={'label':'GitHub','frame_index':1})
+        async def reveal_later():
+            await manager._page.evaluate("setTimeout(()=>{const label=document.createElement('label');label.textContent='Late field';label.appendChild(document.createElement('input'));document.body.appendChild(label)},250)")
+        manager.call(reveal_later())
+        tool(action='wait',target={'label':'Late field'},timeout_ms=2000)
         assert 'validation_errors' in tool(action='validation')
         with pytest.raises(PermissionError): tool(action='navigate',url='https://example.org/unapproved')
         with pytest.raises(PermissionError): tool(action='press_key',target={'label':'Date'},value='Enter')
@@ -222,6 +228,9 @@ def test_upload_ambiguity_and_rejection_are_recoverable(tmp_path,upload_html):
             assert result['status']=='needs_resume'
             assert store.get_job(jid)['status']=='blocked'
             assert store.get_browser_run(jid)['trace']
+            if upload_html.count('<input')>1:
+                chosen=manager.execute_tool(BrowserToolCall(action='upload',target={'field_index':0}))
+                assert chosen['verified_input_attachment']
             assert not fixture.submissions
         finally: manager.close()
 
@@ -253,3 +262,18 @@ def test_closed_browser_recovers_on_explicit_observation(tmp_path,fixture_site):
         manager.navigate(fixture_site[0])
         assert manager.snapshot()['fields']
     finally: manager.close()
+
+
+def test_preparation_returns_model_proposals_without_filling(tmp_path,monkeypatch):
+    from forgeapply.llm import DecisionModel
+    monkeypatch.setattr(DecisionModel,'json',lambda *args,**kwargs:{'actions':[{'field_index':0,'value':'99'}]})
+    with FixtureServer(application_html='<label>Years of Python experience<input required></label><button>Next</button>') as fixture:
+        jid,_=store.add_job(title='Fixture proposal',url=fixture.url+'/apply')
+        manager=BrowserManager(headless=True,user_data_dir=tmp_path/'chromium')
+        try:
+            result=manager.agent_prepare(jid,use_ai=True)
+            assert result['status']=='needs_answers'
+            assert result['suggestions'][0]['value']=='99'
+            assert manager.snapshot()['fields'][0]['value']==''
+            assert not fixture.submissions
+        finally: manager.close()
