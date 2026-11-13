@@ -211,6 +211,16 @@ class BrowserManager:
                 except Exception:
                     set_status(job_id,'blocked','No supported form or Easy Apply button found')
                     return {'status':'blocked','reason':'No supported form detected','trace':trace}
+            # Attach the correct CV when this application exposes a file upload.
+            upload_fields=[f for f in snap['fields'] if f['type']=='file']
+            if upload_fields:
+                lang=job.get('language') if job.get('language') in ('en','it') else 'en'
+                try:
+                    uploaded=await self._upload_resume(lang)
+                    trace.append('Uploaded CV: '+uploaded['uploaded'])
+                except Exception as exc:
+                    set_status(job_id,'blocked','Resume upload needs review: '+str(exc)[:200])
+                    return {'status':'needs_resume','language':lang,'reason':str(exc),'trace':trace}
             result=await self._autofill(use_ai,use_vision)
             trace.append(f"Filled {len(result['filled'])} fields; unknown {len(result['unknown'])}")
             if result['unknown'] or result['errors']:
@@ -283,8 +293,7 @@ class BrowserManager:
                     if value and re.search(pattern,label,re.I): answer=str(value);break
             if answer is not None:
                 plan.append((i,answer));taken.add(i)
-            elif f['required']:
-                unresolved.append(label or f'field {i}')
+            # Required fields are checked after deterministic and AI fill plans complete.
         if use_ai and any(f['index'] not in taken and not f['value'] and f['type'] not in ('file','password','checkbox','radio','submit') for f in snap['fields']):
             cfg=get_setting('llm',{})
             model=DecisionModel(cfg.get('provider','ollama'),cfg.get('model','qwen3:4b'),cfg.get('base_url') or None)
@@ -299,11 +308,19 @@ class BrowserManager:
             except (LLMError,Exception) as exc:
                 unresolved.append('AI unavailable: '+str(exc)[:120])
         done=[];errors=[]
+        successful=set()
         for i,value in plan:
             try:
                 done.append(await self._fill(i,value))
+                successful.add(i)
             except Exception as exc:
                 errors.append({'field':i,'error':str(exc)[:140]})
+        # Only report a required question as unanswered if it was not actually filled.
+        # This avoids prematurely stopping multi-page applications after a correct AI answer.
+        for field in snap['fields']:
+            if field['required'] and not field['value'] and field['index'] not in successful:
+                if field['type'] not in ('file','submit','hidden'):
+                    unresolved.append(field['label'] or field['name'] or f"field {field['index']}")
         return {'filled':done,'unknown':sorted(set(unresolved)),'errors':errors,'url':self._page.url,
                 'note':'Review answers and screenshot before proceeding or submitting'}
 
