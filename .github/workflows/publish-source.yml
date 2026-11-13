@@ -1,0 +1,42 @@
+name: Publish ForgeApply source
+on:
+  push:
+    paths:
+      - ".forgeapply-source.tar.xz.base64"
+      - ".github/workflows/publish-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Extract and test the full source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f .forgeapply-source.tar.xz.base64 ]; then
+            echo "Already published"; exit 0
+          fi
+          base64 --decode .forgeapply-source.tar.xz.base64 > /tmp/forgeapply.tar.xz
+          tar -xJf /tmp/forgeapply.tar.xz -C .
+          rm .forgeapply-source.tar.xz.base64
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pytest -q
+      - name: Commit full source to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: publish complete tested ForgeApply application"
+            git push origin HEAD:main
+          fi
