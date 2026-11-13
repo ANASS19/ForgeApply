@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+DEFAULT_LOCAL_MODEL='qwen3.5:9b'
+
 
 class FormAction(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
@@ -29,7 +31,8 @@ class LLMError(RuntimeError):
 
 
 class DecisionModel:
-    def __init__(self, provider='ollama', model='qwen3:4b', base_url=None, api_key=None, timeout=90, *, allow_remote=False):
+    def __init__(self, provider='ollama', model=DEFAULT_LOCAL_MODEL, base_url=None, api_key=None, timeout=90, *, allow_remote=False,
+                 think=False,num_ctx=8192,num_predict=768,temperature=0):
         if provider not in {'ollama', 'openai'}:
             raise ValueError('provider must be ollama or openai')
         self.provider = provider
@@ -46,6 +49,15 @@ class DecisionModel:
         self.api_key = api_key or (None if self.is_local else os.environ.get('FORGEAPPLY_API_KEY') or os.environ.get('OPENAI_API_KEY'))
         self.timeout = timeout
         self.last_metrics={}
+        self.think=bool(think)
+        self.ollama_options={'num_ctx':int(num_ctx),'num_predict':int(num_predict),'temperature':float(temperature),
+                             'seed':42,'top_k':1,'top_p':1.,'repeat_penalty':1.,'presence_penalty':0.}
+
+    @classmethod
+    def from_settings(cls,config:dict):
+        return cls(config.get('provider','ollama'),config.get('model') or DEFAULT_LOCAL_MODEL,config.get('base_url') or None,
+                   allow_remote=config.get('allow_remote',False),think=config.get('think',False),
+                   num_ctx=config.get('num_ctx',8192),num_predict=config.get('num_predict',768),temperature=config.get('temperature',0))
 
     def health(self) -> dict:
         """Read provider inventory; capabilities are reported only when advertised."""
@@ -74,6 +86,7 @@ class DecisionModel:
             if screenshot:
                 user_message['images'] = [base64.b64encode(screenshot).decode('ascii')]
             payload = {'model': self.model, 'stream': False, 'format': 'json',
+                       'think':self.think,'options':self.ollama_options,
                        'messages': [{'role': 'system', 'content': system}, user_message]}
             url = self.base_url + '/api/chat'
             headers = {}

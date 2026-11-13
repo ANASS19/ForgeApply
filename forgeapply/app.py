@@ -18,8 +18,9 @@ from . import store, discovery
 from .browser import browser, SCREEN_DIR
 from .config import CV_DIR, PORT
 from .browser_tools import BrowserToolCall
-from .llm import DecisionModel
+from .llm import DecisionModel,DEFAULT_LOCAL_MODEL
 from urllib.parse import urlsplit
+from .extension_api import router as extension_router,extension_origin
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
@@ -28,6 +29,7 @@ async def lifespan(app:FastAPI):
 
 app=FastAPI(title='ForgeApply',version='1.0.0',docs_url='/api/docs',lifespan=lifespan)
 store.init_db()
+app.include_router(extension_router)
 
 @app.middleware('http')
 async def local_request_guard(request,call_next):
@@ -37,10 +39,20 @@ async def local_request_guard(request,call_next):
     if request.url.hostname not in allowed_hosts:
         return JSONResponse({'detail':'Local Host header required'},status_code=403)
     origin=request.headers.get('origin','')
+    extension_id=extension_origin(origin)
+    bridge=request.url.path.startswith('/api/extension/')
+    if extension_id and not bridge:
+        return JSONResponse({'detail':'Extensions must use the authenticated bridge'},status_code=403)
+    if bridge and request.method=='OPTIONS':
+        if not extension_id: return JSONResponse({'detail':'Extension origin required'},status_code=403)
+        return Response(status_code=204,headers={'Access-Control-Allow-Origin':origin,
+            'Access-Control-Allow-Methods':'GET,POST,DELETE,OPTIONS',
+            'Access-Control-Allow-Headers':'Content-Type,Authorization,X-ForgeApply-Extension',
+            'Vary':'Origin'})
     if request.method not in ('GET','HEAD','OPTIONS'):
-        if request.headers.get('sec-fetch-site') == 'cross-site':
+        if request.headers.get('sec-fetch-site') == 'cross-site' and not (bridge and extension_id):
             return JSONResponse({'detail':'Cross-origin control is disabled'},status_code=403)
-        if origin:
+        if origin and not (bridge and extension_id):
             try: parsed=urlsplit(origin)
             except ValueError: return JSONResponse({'detail':'Invalid origin'},status_code=403)
             if parsed.scheme != request.url.scheme or parsed.netloc != request.url.netloc:
@@ -50,11 +62,15 @@ async def local_request_guard(request,call_next):
     response.headers['X-Frame-Options']='DENY'
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control']='no-store'
+    if bridge and extension_id:
+        response.headers['Access-Control-Allow-Origin']=origin
+        response.headers['Vary']='Origin'
     return response
 STATIC=Path(__file__).resolve().parent.parent/'static'
 
 class JobIn(BaseModel):
     title:str; url:str; company:str=''; location:str=''; description:str=''; source:str='manual'; posted_at:str|None=None
+    origin_url:str=''
 
 class StatusIn(BaseModel):
     status:str; note:str=''; acknowledged:bool=False
@@ -104,8 +120,12 @@ class AutoFillIn(BaseModel):
     use_ai:bool=False; use_vision:bool=False
 
 class LLMSettings(BaseModel):
-    provider:Literal['ollama','openai']='ollama'; model:str='qwen3:4b'; base_url:str=''
+    provider:Literal['ollama','openai']='ollama'; model:str=DEFAULT_LOCAL_MODEL; base_url:str=''
     allow_remote:bool=False
+    think:bool=False
+    num_ctx:int=Field(default=8192,ge=1024,le=131072)
+    num_predict:int=Field(default=768,ge=64,le=8192)
+    temperature:float=Field(default=0,ge=0,le=2)
 
 class OCRIn(BaseModel):
     mode:Literal['local','vision']='local'
@@ -201,6 +221,12 @@ def save_answer(value:AnswerIn):
     wrap(store.upsert_answer,value.pattern,value.answer,value.enabled,value.source)
     return {'ok':True}
 
+@app.get('/api/resumes/{lang}/text')
+def resume_text(lang:Literal['en','it']):
+    from .document_text import extract_text
+    profile=store.get_setting('profile',{})
+    return wrap(extract_text,Path(profile.get('resume_'+lang,'')))
+
 @app.delete('/api/answers/{aid}')
 def delete_answer(aid:int): store.delete_answer(aid);return {'ok':True}
 
@@ -241,7 +267,7 @@ def export():
     return Response(out.getvalue(),media_type='text/csv',headers={'Content-Disposition':'attachment; filename="forgeapply-jobs.csv"'})
 
 @app.get('/api/llm')
-def llm(): return store.get_setting('llm',{'provider':'ollama','model':'qwen3:4b','base_url':''})
+def llm(): return store.get_setting('llm',LLMSettings().model_dump())
 
 @app.put('/api/llm')
 def save_llm(value:LLMSettings):
@@ -252,8 +278,7 @@ def save_llm(value:LLMSettings):
 def llm_health():
     cfg=store.get_setting('llm',{})
     def check():
-        model=DecisionModel(cfg.get('provider','ollama'),cfg.get('model','qwen3:4b'),cfg.get('base_url') or None,
-                            allow_remote=cfg.get('allow_remote',False))
+        model=DecisionModel.from_settings(cfg)
         return model.health()
     return wrap(check)
 

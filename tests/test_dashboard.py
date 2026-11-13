@@ -14,6 +14,7 @@ def test_dashboard_saved_profile_context_and_safe_defaults(tmp_path):
     store.save_profile({'first_name':'Fixture','last_name':'Candidate','email':'fixture@example.org'})
     store.set_setting('candidate_context',{'education':[{'degree':'Fixture MSc','completed':True}],
                                           'languages':{'Italian':'Beginner'}})
+    store.add_job(title='Synthetic employer role',url='https://example.org/apply',origin_url='https://www.linkedin.com/jobs/view/fixture-123')
     sock=socket.socket()
     sock.bind(('127.0.0.1',0))
     port=sock.getsockname()[1]
@@ -45,6 +46,9 @@ def test_dashboard_saved_profile_context_and_safe_defaults(tmp_path):
                 page.get_by_role('button',name='AI Settings',exact=True).click()
                 page.wait_for_function("document.querySelector('#llmForm [name=model]').value!==''")
                 assert not page.locator('[name=allow_remote]').is_checked()
+                page.get_by_role('button',name='Job Queue',exact=True).click()
+                from playwright.sync_api import expect
+                expect(page.get_by_role('link',name='Source opportunity',exact=True)).to_have_attribute('href','https://www.linkedin.com/jobs/view/fixture-123')
                 page.get_by_role('button',name='Browser Agent',exact=True).click()
                 assert not page.locator('#useAI').is_checked()
                 assert not page.locator('#allowResumeUpload').is_checked()

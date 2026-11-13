@@ -20,6 +20,8 @@ from .store import get_setting, list_answers, set_status, get_job
 from .llm import DecisionModel, LLMError
 from .browser_tools import BrowserToolCall, BrowserTarget
 from . import store
+from .form_logic import SENSITIVE_QUESTION, known_answer
+from .site_policy import capabilities, require_automation
 
 BROWSER_DIR = ROOT / 'browser_profile'
 SCREEN_DIR = ROOT / 'screenshots'
@@ -43,11 +45,6 @@ FIELD_SCRIPT = '''() => Array.from(document.querySelectorAll('input:not([type=hi
  required:e.required||e.getAttribute('aria-required')==='true',selected_values:e.tagName==='SELECT'?Array.from(e.selectedOptions).map(o=>o.value):[],options:e.tagName==='SELECT'?Array.from(e.options).map(o=>({value:o.value,text:o.text})):[]}
  })'''
 
-# These require deliberate user interaction, including when a broad saved regex matches.
-SENSITIVE_QUESTION = re.compile(
-    r'visa|sponsor|work.?authori[sz]|right to work|permesso|criminal|disab|convict|'
-    r'certif(?:y|ico)|declar|attest|consent|agree|privacy|gender|ethnic|veteran|'
-    r'salary|compensation|notice period|availability|start date|immediately', re.I)
 CONFIRMATION = re.compile(r'application (has been )?(submitted|received)|thank you for (applying|your application)|candidatura (inviata|ricevuta)|application successfully',re.I)
 
 
@@ -194,6 +191,9 @@ class BrowserManager:
     async def _snapshot(self):
         await self._ensure_page()
         page=self._page
+        policy=capabilities(page.url)
+        if policy['automation']=='manual_only':
+            return {'url':page.url,'title':'Manual assistance - '+policy['platform'],'text':policy['message'],'fields':[],'buttons':[],'policy':policy}
         try: text=(await page.locator('body').inner_text(timeout=7000))[:12000]
         except Exception: text=''
         fields=[]
@@ -237,6 +237,7 @@ class BrowserManager:
     def screenshot(self): return self.call(self._screenshot())
 
     async def _fill(self, i:int, value:str, snapshot_id:str|None=None):
+        require_automation(self._page.url)
         if snapshot_id is not None and snapshot_id != self._snapshot_id:
             raise ValueError('Stale form snapshot; inspect the page again')
         if self._page.url != self._snapshot_url or i<0 or i>=len(self._fields):
@@ -309,6 +310,7 @@ class BrowserManager:
         if call.snapshot_id is not None and call.snapshot_id!=self._snapshot_id:
             raise ValueError('Stale form snapshot; inspect again')
         if call.action=='inspect': return await self._snapshot()
+        require_automation(self._page.url)
         if call.action in ('extract_text','validation'):
             snap=await self._snapshot()
             return {'text':snap['text']} if call.action=='extract_text' else {'validation_errors':snap['validation_errors']}
@@ -411,6 +413,7 @@ class BrowserManager:
 
     async def _upload_resume(self,lang='en',target:BrowserTarget|None=None):
         if self._job_id and not self._destination_allowed(): raise PermissionError('Review and approve this application destination before uploading documents')
+        require_automation(self._page.url)
         profile=get_setting('profile',{})
         path=Path(profile.get('resume_it' if lang=='it' else 'resume_en','')).expanduser()
         if not path.is_file(): raise FileNotFoundError('Configure an existing resume file in the Profile tab')
@@ -443,6 +446,7 @@ class BrowserManager:
     def upload_resume(self,lang='en'): return self.call(self._upload_resume(lang))
 
     async def _click(self,kind, text=''):
+        require_automation(self._page.url)
         if kind not in ('next','easy_apply','other'): raise ValueError('Unknown click kind')
         if kind=='easy_apply':
             pattern=re.compile(r'Easy Apply|Candidatura semplice|Candidati facilmente',re.I)
@@ -493,6 +497,7 @@ class BrowserManager:
 
     async def _submit(self,job_id, approved):
         if not approved: raise PermissionError('Final submission requires explicit approval')
+        require_automation(self._page.url)
         job=get_job(job_id)
         if not job: raise KeyError('Job not found')
         if job['status']=='submitted': raise ValueError('Application already submitted; will not repeat')
@@ -552,6 +557,9 @@ class BrowserManager:
                 return {'status':'paused','trace':trace}
             snap=await self._snapshot()
             self._progress(job_id,'observe','inspect',f"Step {step+1}; {len(snap['fields'])} fields")
+            if capabilities(self._page.url)['automation']=='manual_only':
+                set_status(job_id,'blocked','Native site automation disabled; use manual assistance')
+                return {'status':'manual_only','reason':capabilities(self._page.url)['message'],'trace':trace,'snapshot':snap}
             if not self._destination_allowed():
                 set_status(job_id,'blocked','Unexpected destination; review the URL and approve it before sending candidate information')
                 return {'status':'needs_destination_approval','reason':'Application moved to a new origin; review and approve the destination','trace':trace,'snapshot':snap}
@@ -650,8 +658,7 @@ class BrowserManager:
             return local_ocr(Path(path))
         if mode!='vision': raise ValueError('Choose local or vision OCR')
         cfg=get_setting('llm',{})
-        model=DecisionModel(cfg.get('provider','ollama'),cfg.get('model','qwen3:4b'),cfg.get('base_url') or None,
-                            allow_remote=cfg.get('allow_remote',False))
+        model=DecisionModel.from_settings(cfg)
         img=Path(path).read_bytes()
         return model.json('You are an OCR assistant. Transcribe all visible on-screen text faithfully. '
                           'Return JSON with text and unclear_segments fields. Do not guess unclear text.',
@@ -662,41 +669,16 @@ class BrowserManager:
 
     async def _autofill(self,use_ai,use_vision):
         if self._job_id and not self._destination_allowed(): raise PermissionError('Review and approve this destination before filling candidate information')
+        require_automation(self._page.url)
         snap=await self._snapshot()
         profile=get_setting('profile',{})
         answers=[a for a in list_answers() if a['enabled']]
         plan=[]; unresolved=[]; taken=set(); suggestions=[]
-        patterns=[
-          (r'first[ _-]?name|given name|nome',profile.get('first_name')),
-          (r'last[ _-]?name|surname|cognome',profile.get('last_name')),
-          (r'e[ _-]?mail(?: address)?|indirizzo email',profile.get('email')),
-          (r'(?:phone|mobile|telefono|cellulare)(?: number)?',profile.get('phone')),
-          (r'linkedin(?: (?:url|profile))?',profile.get('linkedin')),
-          (r'github(?: (?:url|profile))?',profile.get('github')),
-          (r'portfolio|website|sito web',profile.get('portfolio')),
-          (r'(?:current )?(?:city|città|comune|location)',profile.get('city')),
-          (r'(?:current )?(?:country|paese|nazione)(?: of residence)?',profile.get('country')),
-          (r'(?:years(?: of)? (?:ai|artificial intelligence) experience|ai experience(?: \(years\))?)',profile.get('years_ai')),
-          (r'(?:years(?: of)? python experience|python experience(?: \(years\))?)',profile.get('years_python')),
-        ]
         for f in snap['fields']:
-            i=f['index']; label=f.get('label') or f.get('name') or f.get('id') or ''
-            if f.get('cross_origin'): continue
-            if f['type'] in ('file','password','hidden','submit','button','checkbox','radio') or f['value']:
-                continue
-            if SENSITIVE_QUESTION.search(label):
-                continue
-            answer=None
-            for saved in answers:
-                try:
-                    if re.search(saved['pattern'],label,re.I): answer=saved['answer']; break
-                except re.error: continue
-            if answer is None:
-                for pattern,value in patterns:
-                    if value and re.fullmatch(pattern,label.strip().rstrip(':* ').strip(),re.I): answer=str(value);break
+            answer=known_answer(f,profile,answers)
             if answer is not None:
-                plan.append(BrowserToolCall(action='fill',target=BrowserTarget(field_index=i),value=answer));taken.add(i)
-            # Required fields are checked after deterministic and AI fill plans complete.
+                plan.append(BrowserToolCall(action='fill',target=BrowserTarget(field_index=f['index']),value=answer[0]))
+                taken.add(f['index'])
         ai_fields=[f for f in snap['fields'] if f['index'] not in taken and not f['value']
                    and not f.get('cross_origin')
                    and f['type'] not in ('file','password','checkbox','radio','submit','button')
@@ -704,8 +686,7 @@ class BrowserManager:
         if use_ai and ai_fields:
             cfg=get_setting('llm',{})
             try:
-                model=DecisionModel(cfg.get('provider','ollama'),cfg.get('model','qwen3:4b'),cfg.get('base_url') or None,
-                                    allow_remote=cfg.get('allow_remote',False))
+                model=DecisionModel.from_settings(cfg)
                 picture=await self._page.screenshot() if use_vision else None
                 facts={k:v for k,v in profile.items() if v and not k.startswith('resume_')}
                 context=get_setting('candidate_context',{})

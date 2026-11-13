@@ -97,11 +97,19 @@ def init_db():
             job_id INTEGER PRIMARY KEY REFERENCES jobs(id),
             url TEXT NOT NULL, state TEXT NOT NULL, evidence TEXT NOT NULL DEFAULT '', at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS extension_pair_codes (code_hash TEXT PRIMARY KEY,expires_at REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS extension_pairs (extension_id TEXT PRIMARY KEY,token_hash TEXT NOT NULL,created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS extension_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,extension_id TEXT NOT NULL,url TEXT NOT NULL,
+            action TEXT NOT NULL,detail TEXT NOT NULL,at TEXT NOT NULL
+        );
         ''')
         columns={row['name'] for row in db.execute('PRAGMA table_info(answers)')}
         for name in ('source','verified_at'):
             if name not in columns:
                 db.execute(f"ALTER TABLE answers ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        if 'origin_url' not in {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}:
+            db.execute("ALTER TABLE jobs ADD COLUMN origin_url TEXT NOT NULL DEFAULT ''")
         if db.execute('SELECT 1 FROM settings WHERE key="profile"').fetchone() is None:
             db.execute('INSERT INTO settings VALUES (?,?)', ('profile', json.dumps({
                 'first_name':'', 'last_name':'', 'email':'', 'phone':'',
@@ -144,8 +152,9 @@ def save_profile(data: dict, source: str = 'user:local-dashboard') -> dict:
     return profile
 
 
-def add_job(*, title, url, company='', location='', source='manual', description='', posted_at=None, language='en', score=0):
+def add_job(*, title, url, company='', location='', source='manual', description='', posted_at=None, language='en', score=0,origin_url=''):
     url = normalized_url(url)
+    origin_url=normalized_url(origin_url) if origin_url else ''
     t=now()
     with conn() as db:
         r=db.execute('SELECT id FROM jobs WHERE url=?', (url,)).fetchone()
@@ -153,9 +162,11 @@ def add_job(*, title, url, company='', location='', source='manual', description
             # Never reset a submitted/processed status during re-import.
             db.execute('UPDATE jobs SET title=?, company=?, location=?, description=CASE WHEN ? != "" THEN ? ELSE description END, updated_at=? WHERE id=?',
                        (title, company, location, description, description, t, r['id']))
+            if origin_url: db.execute('UPDATE jobs SET origin_url=? WHERE id=?',(origin_url,r['id']))
             return r['id'], False
         cur=db.execute('''INSERT INTO jobs(url,title,company,location,source,description,posted_at,score,language,created_at,updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)''', (url,title,company,location,source,description,posted_at,score,language,t,t))
+        if origin_url: db.execute('UPDATE jobs SET origin_url=? WHERE id=?',(origin_url,cur.lastrowid))
         return cur.lastrowid, True
 
 

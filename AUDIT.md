@@ -31,7 +31,7 @@ Evidence-based gaps repaired in this change:
 | Validation/failure/recovery | Required controls, changing DOM, stale UI, stalled Next, ambiguous/rejected upload, login/CAPTCHA handoff, browser restart and unexpected redirect gates |
 | Submission protections and receipts | Synthetic fixture only: unapproved and wrong-job/page actions blocked; success/failure proof; confirmed/ambiguous attempts not replayed after restart |
 | Candidate persistence/migrations | Isolated SQLite tests for profile/context/unknown values, regex scope, legacy answer migration and preserved statuses |
-| Ollama and OpenAI-compatible inference | Mock HTTP/schema/outage tests; no live successful model inference on this machine |
+| Ollama and OpenAI-compatible inference | Real local Qwen3.5 4B/9B synthetic text/vision evaluation; hosted-compatible transports remain mock-tested |
 | OCR | Local Tesseract command adapter and missing-installation tests; no installed Tesseract/live recognition verified |
 | Greenhouse/Lever/Ashby discovery | Existing mocked public-feed tests; no employer application adapter or live submission verified |
 
@@ -47,12 +47,22 @@ This is a supervised local development build, **not a complete initial public re
 2. The persistent journal/submission locks do not constitute a scheduling queue, robust crash-restored SPA state, parallel multi-user sessions, or an encrypted credential vault. Inspection/navigation can recover a closed browser; mutations are never replayed automatically.
 3. Loopback origin/Host checks do not authenticate other programs/users on the same machine. SQLite, screenshots, CVs and Chromium profile data rely on local OS access controls. No screenshot-redaction/retention policy or encrypted multi-user isolation is implemented.
 4. PDF signature/DOCX container checks do not parse every document or prove truthful contents. Full document ingestion, bilingual document generation, granular fact expiration and a structured-profile editor remain incomplete. Manual submission acknowledgment records a user note; it does not independently reconstruct a manually chosen CV or produce browser proof.
-5. Live Ollama, hosted text/vision, real local OCR and provider capability variations need verification. The model is advisory; there is no unconstrained LLM tool execution. No RAG or multi-agent framework was added.
+5. Hosted text/vision, real Tesseract OCR, model thinking modes, long contexts and additional provider variants need verification. Real local Qwen3.5 4B/9B tests found repeated unsupported material answers in both models. The model remains advisory; there is no unconstrained LLM tool execution. No RAG or multi-agent framework was added.
 6. Discovery scoring is heuristic. Strict 24-hour/seven-day freshness, active-vacancy verification, remote-from-Italy eligibility and complete qualification matching are not yet enforced by a discovery/application policy engine. Review opportunities manually; do not interpret score as eligibility.
 7. Tab selection is an API tool; arbitrary popups/download workflows, cross-origin iframe autofill and all custom control variants are not proven. Tool/schema limits intentionally stop ambiguous operations.
 8. Signed installers, first-run wizard, standalone packaging, clean-machine install validation, an explicit license choice and external operator testing remain outstanding. CI results must be assessed separately from local Windows tests.
 
 The next highest-value blocker is a permitted ATS adapter with an explicit capability manifest, complete validation/approval evidence, and restart-safe application attempts, followed by conservative vacancy eligibility gating.
+
+## Extension and local inference phase
+
+The subsequent implementation adds an installable MV3 extension, a revocable one-time-paired local bridge, current-tab inspection, shared deterministic form mapping, native file chooser handling, multi-page navigation and manual question lookup. Restricted LinkedIn/Indeed native inspection/autofill is now disabled in both the extension and managed executor. Operator-provided URL imports, matching and original-listing links remain traceable in the dashboard. See [extension setup and boundaries](extension/README.md).
+
+The suite now passes **61 tests on Windows Python 3.13**, including a real unpacked MV3 service worker/UI against a real local FastAPI server and served forms, native chooser, same-origin iframe, navigation, token revocation and source-listing links. A separate running-installation smoke used the owner-authorized local profile and CV, stopped at final review with zero submissions, and confirmed the candidate profile/context/answers were unchanged. PDF/DOCX extraction is a local, unverified text preview rather than automatic fact ingestion.
+
+The [reusable benchmark](benchmarks/README.md) ran 300 case-trials over 50 synthetic cases, plus separate production-provider and timing checks. Both installed models were exercised with text and images. No actual CV/candidate information or paid inference was used. The 9B model is the new-install advisory preference; the smaller model remains a fast preset. Both failed the material-fact safety gate, and quality intervals overlap. Private reports, raw outputs and charts stay under the local user data directory. Existing saved model selections are preserved and presets require explicit Save.
+
+These improvements do not complete the scheduling queue, free-running general agent, bilingual document drafting, verified employer ATS adapters, cross-origin extension frames, normal Chrome/Edge operator testing or public release packaging. They do establish a tested extension/managed-browser preparation workflow with an explicit manual final boundary.
 
 ## Reproduce locally
 

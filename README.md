@@ -6,7 +6,7 @@ A runnable **local application workspace under active development** with a persi
 
 ## Windows: run in 3 steps
 
-1. Install **Python 3.11+** and optionally [Ollama](https://ollama.com/). For local form understanding, run `ollama pull qwen3:4b`; choose a vision-capable Ollama model such as `gemma3:4b` if you want screenshot understanding (check installed Ollama tags).
+1. Install **Python 3.11+** and optionally [Ollama](https://ollama.com/). The measured local advisory default is `qwen3.5:9b`; `qwen3.5:4b` is the faster preset. Both require human review. See [local benchmarks](benchmarks/README.md) for the tested protocol and limitations.
 2. Unzip this project, then double-click **`start_windows.bat`**. The first run creates a venv, installs requirements and downloads Playwright Chromium.
 3. Open **http://127.0.0.1:8765** in your browser. The app stores its local SQLite database, resumes and Chromium login state under `%USERPROFILE%\.forgeapply`.
 
@@ -99,3 +99,11 @@ Restart preserves records, journals, submission locks and Chromium session cooki
 - `tests/`: focused tests for data integrity, job parsing and app API
 
 This is a local application, not a ChatGPT-installed skill or a cloud scheduler. It is suitable for further packaging as a native executable or MCP server if you later want those integrations.
+
+## Chrome extension and measured local AI
+
+Load the unpacked `extension/` folder in `chrome://extensions`, then pair it using the one-time code in the dashboard AI Settings. The extension works on an explicitly selected tab, shares deterministic field logic with managed Playwright, supports verified filling and a native CV file picker, and keeps final submission manual. [Installation, permissions, supported workflows and policy boundaries](extension/README.md). LinkedIn/Indeed native inspection/autofill is disabled; URL import, manually supplied job text, matching and verified-answer lookup remain available.
+
+The [benchmark runner](benchmarks/README.md) compares installed local models with synthetic text, vision, tool and safety cases. No applicant data is used. The 9B advisory preset reduced observed errors but neither model passed the material-fact safety gate; all generated answers remain proposals. Existing saved model selections are preserved. Context/output/temperature/thinking settings are explicit and configurable.
+
+Local PDF/DOCX text preview is available from Candidate & CVs. Extraction never promotes CV text into verified facts or sends documents to an inference provider automatically. Full document drafting/tailoring, cross-origin extension frames, complete ATS adapters, scheduling and a public release remain unfinished.
