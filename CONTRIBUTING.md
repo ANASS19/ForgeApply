@@ -16,6 +16,6 @@ For browser changes, cover the resulting state as well as the action: attachment
 
 Before committing, inspect every staged path and diff. Never stage personal context handoffs, candidate profiles, real CVs, screenshots, cookies, databases, logs or credentials. `FORGEAPPLY_HOME` can isolate a development installation. It must point outside tracked source. Browser sessions and saved screening facts are sensitive even when no password is present.
 
-Report fixture evidence separately from live ATS/model verification. This repository has no chosen open-source license yet; do not assume unrestricted redistribution rights until the owner selects one.
+Report fixture evidence separately from live ATS/model verification. ForgeApply is licensed under Apache-2.0; see LICENSE and NOTICE. Retain applicable copyright and attribution notices, mark modifications as required by the license, and contribute only code you have the right to submit. Third-party dependencies retain their own licenses. New contributions are accepted under Apache-2.0 unless explicitly stated otherwise.
 
 The MV3 test loads the unpacked `extension/` directory in Chromium; do not remove origin/token/CSP checks to make it pass. Optional real inference benchmarks require `benchmarks/requirements.txt` and installed local models. Do not run paid APIs in CI or commit benchmark output directories. See `benchmarks/README.md` for the fixed protocol, privacy boundary and audited scoring rules.

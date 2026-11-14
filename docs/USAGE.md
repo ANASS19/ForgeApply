@@ -28,13 +28,16 @@ The profile starts without private candidate defaults. A CV text preview is not 
 
 ## Configure AI (optional)
 
-Open **AI Settings** from the dashboard's More tools menu. Save settings, then choose **Check provider / model**.
+Open **AI Settings** from the dashboard's More tools menu. Save settings, then choose **List models / check provider** and **Test saved model (synthetic data)**. The response test uses no candidate information.
 
 | Mode | Settings | What to expect |
 |---|---|---|
 | Deterministic | Turn off AI for unfamiliar questions in extension Settings → More options | Known facts fill without a model; missing answers remain for you |
 | Local Ollama | Provider `Ollama local`, exact installed model name, default endpoint `http://127.0.0.1:11434` | Local inference; no API key needed |
 | Local compatible server | Provider `OpenAI-compatible API`, local model name, server's compatible base URL, usually ending in `/v1` | Compatible chat endpoint required; environment keys are not forwarded to loopback |
+| Anthropic Claude | Provider `Anthropic Claude`, provider model ID, `ANTHROPIC_API_KEY` in the backend environment | Direct Messages API; explicit remote consent required |
+| DeepSeek | Provider `DeepSeek`, provider model ID, `DEEPSEEK_API_KEY` in the backend environment | OpenAI-compatible transport; explicit remote consent required |
+| OpenRouter | Provider `OpenRouter`, exact `company/model` ID (keep `:free` if selected) | Live model catalog, session key or `OPENROUTER_API_KEY`, explicit remote consent |
 | Hosted compatible API | Provider `OpenAI-compatible API`, provider's exact model and HTTPS base URL | Requires explicit remote consent and process environment key |
 
 For Ollama, verify the installation and available models in a separate terminal:
@@ -45,7 +48,7 @@ ollama list
 
 Install a model suited to your hardware if needed; model downloads can be large. The measured presets are `qwen3.5:4b` and `qwen3.5:9b`. Other Ollama models can be configured by exact name, but their output quality and capabilities are not automatically verified. Screenshots require a vision-capable model.
 
-For hosted inference, set `FORGEAPPLY_API_KEY` in the terminal that launches ForgeApply. The following avoids putting a literal key into shell history:
+Provider selection pre-fills the endpoint and API-key environment variable name. Enter your provider model ID and save. OpenAI uses `OPENAI_API_KEY`, Anthropic uses `ANTHROPIC_API_KEY`, DeepSeek uses `DEEPSEEK_API_KEY`, and OpenRouter uses `OPENROUTER_API_KEY`. Custom compatible endpoints can select their own `*_API_KEY` variable. `FORGEAPPLY_API_KEY` remains a generic hosted fallback. For example, set it in the terminal that launches ForgeApply: The following avoids putting a literal key into shell history:
 
 ```powershell
 $providerSecret = Read-Host 'Provider API key' -AsSecureString
@@ -53,9 +56,26 @@ $env:FORGEAPPLY_API_KEY = [System.Net.NetworkCredential]::new('', $providerSecre
 .venv\Scripts\python.exe -m forgeapply
 ```
 
-Set provider/model/base URL in the dashboard and enable **Allow sending candidate data and optional screenshots to a remote inference endpoint** only if you accept that transfer. Keys are read from the server process environment, not stored in SQLite. Restart after changing the environment. Never include a key in a URL, screenshot, issue, source file or Git commit.
+Set provider/model/base URL in the dashboard and enable **Allow sending candidate data and optional screenshots to a remote inference endpoint** only if you accept that transfer. Keys are read from the server process environment, not stored in SQLite. You can also expand **API key for this backend session**, paste the key into the masked field, and click **Save provider & use key for this session**. The field clears after success; the key stays only in backend process memory and must be re-entered after a restart. This needs no server restart and does not enable remote inference by itself. Automatic environment keys are never forwarded to loopback endpoints; an authenticated local server must explicitly name its key variable. Never paste a key into the variable-name field. Restart after changing the environment. Never include a key in a URL, screenshot, issue, source file or Git commit.
 
 Disabling the extension AI checkbox disables new model requests from that workflow. It does not revoke facts or documents you already sent to a remote service. Local Ollama/compatible inference and deterministic filling do not require hosted consent.
+
+## Use OpenRouter
+
+1. Open dashboard **AI Settings** and choose provider **OpenRouter**. ForgeApply fills `https://openrouter.ai/api/v1` and the `OPENROUTER_API_KEY` variable name.
+2. Choose a model from the searchable input or paste its exact OpenRouter ID. The public model list loads without a key or candidate data; **Refresh provider models** reloads it. For the model pictured during this phase, the exact ID was `google/gemma-4-31b-it:free`. Keep the full suffix. A listed model is not yet a verified inference connection.
+3. Review and enable **Allow sending candidate data and optional screenshots to a remote inference endpoint** if you accept sending that data through OpenRouter and the routed model provider.
+4. Expand **API key for this backend session**, paste your key locally, then click **Save provider & use key for this session**. Alternatively, set `OPENROUTER_API_KEY` in the terminal before starting ForgeApply, and use **Save model settings**. Do not paste keys into chat or the environment-variable-name field.
+5. Click **Test saved model (synthetic data)**. It sends only a small JSON test. A successful catalog lookup does not verify your API key, account credits or generation.
+6. Use the existing extension form preparation, answer review, CV/letter drafting and reviewed PDF attachment workflow. Changing the model preserves your local facts and approved answers.
+
+Session keys are never written to SQLite or returned by the API. They are scoped to the selected provider's key variable; changing the provider clears the masked input. Re-enter the key after a backend restart. Environment keys supplied at process startup remain supported.
+
+ForgeApply selects JSON-schema, JSON-object or prompt-only output from advertised model capabilities, and still applies its typed answer/evidence validation. If a routed endpoint explicitly rejects a format parameter, one retry uses the same model without that parameter. No alternate model or paid fallback is selected automatically. Screenshots require image input; text-only selections fail before uploading an image. Vision remains a separate opt-in.
+
+Credit, permission, model availability and rate-limit errors are reported distinctly; free models can have limits. Weak or malformed model answers remain blocked/reviewable. Live catalog availability and mocked contracts do not prove every model's factual quality or every site's completion.
+
+The integration follows OpenRouter's [API quickstart](https://openrouter.ai/docs/quickstart), [structured output guide](https://openrouter.ai/docs/guides/features/structured-outputs) and [error reference](https://openrouter.ai/docs/api_reference/errors-and-debugging).
 
 ## Connect Chrome once
 
@@ -67,6 +87,16 @@ Disabling the extension AI checkbox disables new model requests from that workfl
 6. Click **Keep open** to use Chrome's persistent side panel.
 
 The default backend port is 8765. If you deliberately changed it, update the extension's port under More options. Use Reload rather than Remove when updating; removing the extension can erase its local connection.
+
+## Approve, edit, learn and prepare documents
+
+Known profile facts fill first. Unfamiliar questions receive grounded proposals using dashboard facts and relevant human-approved answers retrieved locally. Supporting facts are shown with the proposal. **Approve & fill** confirms one answer; **Reject & edit** clears it for your replacement. The **Remember verified personal answers locally** setting controls learning. Rejected proposals are never saved. Exact facts and learned field mappings can fill again; retrieved paraphrases still require review. Company/role-specific answers stay scoped to that application, and narrative drafts remain reviewable.
+
+This is structured local retrieval plus a lexical search of approved answers, not a vector database or a completed multi-agent platform. Unknown material facts remain unanswered until you provide them. Never use a proposal's source citations as proof of accuracy.
+
+For each vacancy, **Draft CV** and **Motivation letter** use the current title, company and description. CV skills requested by that vacancy are emphasized only if they exist in your verified background; optional AI wording uses a separate **Document output tokens** budget (default 2048). Review/edit the text, select the appropriate website upload field, then choose **Reviewed - attach PDF to selected field**. Repeat for the other document. Existing selected documents are protected from accidental replacement; attachment is blocked when the vacancy context changes. A selected file still needs website upload acceptance. Your configured general EN/IT CV files are not overwritten.
+
+In extension **Settings**, choose any installed model and **Use selected model**. Context/output options are preserved. **Refresh models** updates the inventory; **Test current model** checks inference with synthetic data. Thinking-only empty responses get one local compatibility retry without the format constraint, followed by the same strict answer validation. Timeouts, output limits, missing models and provider failures have distinct messages.
 
 ## Fill an application
 
