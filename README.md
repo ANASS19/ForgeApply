@@ -1,6 +1,6 @@
 <div align="center">
 
-![ForgeApply - local-first AI application harness](docs/assets/banner.svg)
+![ForgeApply - local-first AI application harness](docs/assets/banner.svg?v=20261114-harness-2)
 
 ### Your career facts. Your models. A browser workflow you control.
 
@@ -16,9 +16,9 @@
 
 ---
 
-**ForgeApply is an open-source, local-first AI application harness** for turning verified career facts into reviewed job applications in **English and Italian**. It combines an agentic browser workflow, grounded memory, tailored CV and letter drafts, and your choice of local or hosted models.
+**ForgeApply is an open-source, local-first AI application harness** for turning verified career facts into reviewed job applications. It combines an agentic browser workflow, grounded memory, tailored CV and letter drafts, and your choice of local or hosted models.
 
-Set up your profile once. Retrieve relevant approved answers, fill supported forms, review unfamiliar questions, and keep an inspectable record of browser actions. Bring Ollama, OpenRouter, OpenAI, Anthropic, DeepSeek, or another compatible endpoint.
+Set up your profile once. Retrieve relevant approved answers, fill supported forms, review unfamiliar questions, and keep an inspectable record of browser actions. Bring your preferred local runtime or hosted model API.
 
 Created and maintained by **[Anass Nassiri (ANASS19)](https://github.com/ANASS19)**, part of the Forge AI project family.
 
@@ -30,13 +30,13 @@ Created and maintained by **[Anass Nassiri (ANASS19)](https://github.com/ANASS19
 
 | Workflow | Included in this preview |
 |---|---|
-| Keep a reusable profile | Contact details, multiple employment/education records, certifications, languages, skills and EN/IT CVs |
+| Keep a reusable profile | Contact details, multiple employment/education records, certifications, languages, skills, resume versions and supporting documents |
 | Build grounded application memory | Lightweight RAG-style retrieval from profile facts and relevant human-approved answers, with supporting evidence for review |
 | Complete supported steps | Bounded observe/plan/act/verify loop, pause/resume, local checkpoints and a visible virtual cursor |
 | Fill an existing Chrome tab | Compact extension, persistent connection, Keep open side panel, reviewed missing answers |
 | Prepare complex forms | Native/custom selects, radio groups, factual checkboxes, dynamic fields, repeated sections, multi-page review |
-| Use your preferred model | Local Ollama, OpenAI/compatible endpoints, Anthropic, DeepSeek, OpenRouter, or deterministic filling without AI |
-| Tailor application materials | Vacancy-focused bilingual CV/letter drafts, reviewed PDF export and attachment to selected upload fields |
+| Use your preferred model | Local runtimes, hosted model APIs, compatible endpoints, or deterministic filling without AI |
+| Tailor application materials | Vacancy-focused CV and letter drafts, reviewed PDF export and attachment to selected upload fields |
 | Track opportunities | SQLite history, job queue, CSV import/export and public Greenhouse/Lever/Ashby feeds |
 
 Unknown qualifications and personal facts are never intentionally guessed. Legal/consent and protected demographic fields stay manual. LinkedIn/Indeed native inspection and autofill are disabled; use employer application pages where assistance is permitted.
@@ -60,7 +60,7 @@ The current harness uses **one bounded orchestrator**. Its grounded memory combi
 
 **Multi-agent roadmap:** specialist discovery, document, browser and verification agents are planned after complete workflows have been measured. Semantic retrieval and broader application types are also future work. See [verified capabilities and remaining work](RELEASE_READINESS.md).
 
-## Start on Windows
+## Quick start
 
 Install **Python 3.13** and Git, then:
 
@@ -84,16 +84,13 @@ Open **http://127.0.0.1:8765**. You can also use `start_windows.bat` after downl
 5. Enter missing facts and review drafts → **Fill reviewed answers**. Choose a CV using **Attach CV / document**, then **Resume application**.
 6. Review personal/legal fields on the website and resume explicitly. The agent stops at final review; submit manually if you choose. **Prepare & Fill this page** remains available for page-by-page control.
 
-Practice first at dashboard `/demo/en` or `/demo/it`; final submission is disabled. The [usage guide](docs/USAGE.md) includes model setup, realistic multi-page practice, upgrades and troubleshooting. [Guida rapida in italiano](docs/USAGE.md#guida-rapida-in-italiano).
+Try the built-in practice form before using an employer website. The [usage guide](docs/USAGE.md) covers setup, supported language options, document preparation and recovery.
 
-## Choose your intelligence
+## Connect your model
 
-- **No AI:** turn off **Use configured AI for unfamiliar questions** in extension Settings → More options. Known fields still fill; enter unknown answers yourself.
-- **Ollama:** start Ollama, install a model, and select its exact name in AI Settings. `qwen3.5:9b` and `qwen3.5:4b` are measured advisory presets, not guaranteed requirements or safe autonomous decision makers.
-- **OpenRouter:** select its built-in provider, choose any text/chat model ID from the live catalog, enter a key for the current backend session, enable hosted consent, Save and Test. See [OpenRouter setup](docs/USAGE.md#use-openrouter).
-- **OpenAI-compatible:** select the provider, model and base URL. Hosted endpoints require HTTPS, explicit remote consent and an environment API key. Local compatible endpoints can be keyless. See [provider setup](docs/USAGE.md#configure-ai-optional).
+Use a hosted model API, a local inference runtime, or deterministic form filling without a model. Select your provider and model in AI Settings, configure credentials locally, and run the synthetic connection test. Hosted inference requires explicit consent before candidate data is sent.
 
-The [synthetic benchmark](benchmarks/README.md) found factual errors with both tested models. AI output always needs review; evidence references do not prove an answer is correct.
+Model and provider setup belongs in the [configuration guide](docs/USAGE.md#configure-ai-optional). Language-specific adapters, current document-template coverage and supported form behavior are described in the [verification notes](RELEASE_READINESS.md).
 
 ## Privacy and verification
 

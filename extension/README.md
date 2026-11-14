@@ -1,6 +1,6 @@
 # ForgeApply Chrome extension
 
-A local-first Manifest V3 assistant using the existing profile, answers, model settings and tracker. No build step is required.
+A local-first Manifest V3 interface to the ForgeApply AI application harness: verified profile facts, grounded answer memory, browser actions and reviewed documents. Connect your preferred local runtime or hosted model API. No build step is required. Multi-agent orchestration is on the roadmap; the current workflow uses one bounded orchestrator.
 
 ## Start in three steps
 
