@@ -332,7 +332,13 @@
     const {element:e}=resolve(token,id);if(e.type!=='file')throw Error('Select a file input.');
     return new Promise(resolve=>{
       let timer;
-      const finish=()=>{clearTimeout(timer);e.removeEventListener('change',finish);e.removeEventListener('cancel',finish);const rejected=e.files.length&&!e.validity.valid;resolve({attached:!!e.files.length&&!rejected,filename:e.files[0]?.name||'',upload_state:rejected?'rejected':e.files.length?'selected':'empty',snapshot:inspect(),message:rejected?'Upload rejected: '+e.validationMessage:e.files.length?'CV selected: '+e.files[0].name+'. Verify upload acceptance on the page.':'No new file selected.'});};
+      const finish=async()=>{
+        clearTimeout(timer);e.removeEventListener('change',finish);e.removeEventListener('cancel',finish);
+        // Page listeners may run after this isolated-world listener and clear an earlier rejection.
+        await settleDOM();
+        const rejected=e.files.length&&!e.validity.valid;
+        resolve({attached:!!e.files.length&&!rejected,filename:e.files[0]?.name||'',upload_state:rejected?'rejected':e.files.length?'selected':'empty',snapshot:inspect(),message:rejected?'Upload rejected: '+e.validationMessage:e.files.length?'CV selected: '+e.files[0].name+'. Verify upload acceptance on the page.':'No new file selected.'});
+      };
       e.addEventListener('change',finish,{once:true});e.addEventListener('cancel',finish,{once:true});timer=setTimeout(finish,90000);
       e.scrollIntoView({block:'center'});e.focus();e.click();
     });

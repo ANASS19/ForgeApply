@@ -5,6 +5,7 @@
 - Position ForgeApply as an open-source AI application harness with grounded RAG-style memory, reviewed browser automation and local/hosted model choice. Keep specialist multi-agent orchestration explicitly on the roadmap.
 - Add the canonical Apache-2.0 license, NOTICE attribution to creator Anass Nassiri (ANASS19), source SPDX notices and public project credits. Update the blue banner, dashboard and extension description without changing application approval gates.
 - Await backend checkpoint acknowledgement before displaying review/completed states. Cover delayed final saves in actual EN/IT Chromium runs.
+- Read file validity after the website's change listeners finish, so replacing a rejected upload with a valid document does not retain a stale rejection. Exercise both listener orders in real Chromium.
 
 
 ## OpenRouter integration - 2026-11-14

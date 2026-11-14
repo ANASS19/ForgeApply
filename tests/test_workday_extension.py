@@ -99,7 +99,11 @@ def test_workday_style_full_flow_repeated_records_questions_upload_review(tmp_pa
                 oversized=tmp_path/'oversized.pdf';oversized.write_bytes(b'%PDF'+b'0'*(5*1024*1024))
                 with page.expect_file_chooser() as rejected:panel.locator('#chooseFile').click()
                 rejected.value.set_files(str(oversized));expect(panel.locator('#summary')).to_contain_text('Upload rejected')
+                # Register site validation after the chooser listener to expose stale rejection reads.
+                page.evaluate("""()=>{const file=document.querySelector('[name=cv]');
+                    globalThis.validateUpload=file.onchange;file.onchange=null;}""")
             with page.expect_file_chooser() as chooser:panel.locator('#chooseFile').click()
+            if catalog:page.evaluate("document.querySelector('[name=cv]').onchange=validateUpload")
             chooser.value.set_files(str(cv));expect(panel.locator('#summary')).to_contain_text('CV selected')
             if catalog:expect(page.locator('#uploadStatus')).to_have_text('Upload accepted: synthetic.pdf')
             panel.locator('#next').click()

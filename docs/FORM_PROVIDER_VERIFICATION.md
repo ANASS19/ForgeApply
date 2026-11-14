@@ -57,3 +57,9 @@ Private evidence is under `%USERPROFILE%\.forgeapply\qa\openrouter`. The next re
 The publication audit reproduced a race where the panel displayed review ready before backend history finished saving and a reader still saw running. The executor now waits for backend acknowledgement before showing the updated state. The actual multi-page regressions hold the final save behind an explicit gate, verify that the UI has not announced completion while durable history is still running, then release the save and verify both agree. The test wait uses a CSP-compatible function and does not weaken extension security policy.
 
 The public branding describes an application harness with grounded memory. Language-specific and provider-specific setup lives in technical documentation; the headline does not imply every language is verified. Multi-agent orchestration stays on the roadmap. Apache-2.0, NOTICE and source SPDX notices identify creator Anass Nassiri (ANASS19).
+
+## Upload replacement event ordering
+
+Windows Python 3.13 CI exposed a valid replacement file reported as rejected after an oversized upload. The extension's isolated-world change listener could inspect the previous custom validity before the website's listener cleared it. The native chooser now yields through the existing DOM-settlement helper before reading validity and taking the snapshot. Selection still requires website acceptance to be checked separately; this is not proof of a completed server upload.
+
+The actual catalog-form regression registers website validation after the chooser listener, reproducing the stale-rejection failure before the fix. It then replaces an oversized PDF with a valid synthetic PDF, checks both the panel selection message and website acceptance, and continues to final review without submission.
