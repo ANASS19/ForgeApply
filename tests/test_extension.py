@@ -80,6 +80,50 @@ def test_platform_matching_uses_hostname_boundaries():
     assert capabilities('https://fr.indeed.fr/jobs')['automation']=='manual_only'
 
 
+def test_openrouter_grounded_proposal_review_and_real_chromium_fill(tmp_path,monkeypatch):
+    """Native OpenRouter transport through the real planner and DOM executor; no hosted call."""
+    from forgeapply import llm
+    monkeypatch.setattr(llm,'_OPENROUTER_CATALOG',{})
+    monkeypatch.setenv('OPENROUTER_API_KEY','synthetic-openrouter-key')
+    store.save_profile({'first_name':'Fixture'})
+    store.set_setting('llm',{'provider':'openrouter','model':'google/gemma-4-31b-it:free','allow_remote':True})
+    html='<label>First name<input name=first required></label><label>Badge name<input name=badge required></label>'
+    original=httpx.Client;posts=[]
+    def handler(request):
+        assert request.url.host=='openrouter.ai'
+        if request.method=='GET':return httpx.Response(200,json={'data':[{'id':'google/gemma-4-31b-it:free',
+            'architecture':{'input_modalities':['text'],'output_modalities':['text']},'supported_parameters':['response_format']}]})
+        body=json.loads(request.content);posts.append(body)
+        return httpx.Response(200,json={'choices':[{'message':{'content':json.dumps({'answers':[{
+            'field_index':1,'value':'','fact_id':'profile.first_name','evidence_ids':['profile.first_name'],'needs_information':False}]})}}]})
+    with TestClient(app,base_url='http://127.0.0.1:8765') as client,FixtureServer(application_html=html) as fixture,sync_playwright() as p:
+        headers,_=paired(client)
+        monkeypatch.setattr(httpx,'Client',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
+        browser=p.chromium.launch(headless=True)
+        try:
+            page=browser.new_page();page.goto(fixture.url+'/apply')
+            page.evaluate(Path('extension/content.js').read_text(encoding='utf-8'))
+            snapshot=page.evaluate('ForgeApplyPage.inspect()')
+            body={'url':snapshot['url'],'snapshot_id':snapshot['snapshot_id'],'fields':snapshot['fields'],'site_authorized':True,'use_ai':True}
+            response=client.post('/api/extension/plan',headers=headers,json=body)
+            assert response.status_code==200
+            plan=response.json();assert plan['model_called'] and plan['proposals'][0]['value']=='Fixture'
+            result=page.evaluate('plan=>ForgeApplyPage.fill(plan)',plan)
+            expect(page.locator('[name=first]')).to_have_value('Fixture')
+            expect(page.locator('[name=badge]')).to_have_value('') # AI output alone never fills.
+            snapshot=result['snapshot'];field=next(f for f in snapshot['fields'] if f['name']=='badge')
+            reviewed=client.post('/api/extension/reviewed-plan',headers=headers,json={
+                'url':snapshot['url'],'snapshot_id':snapshot['snapshot_id'],'fields':snapshot['fields'],
+                'site_authorized':True,'reviewed':True,'answers':[{'index':field['index'],'token':field['token'],
+                    'value':'Fixture','fact_id':'profile.first_name','remember':True}]})
+            assert reviewed.status_code==200 and reviewed.json()['remembered']==1
+            result=page.evaluate('plan=>ForgeApplyPage.fill(plan)',reviewed.json())
+            expect(page.locator('[name=badge]')).to_have_value('Fixture')
+            assert not result['errors'] and len(posts)==1 and not fixture.submissions
+            page.screenshot(path=str(tmp_path/'openrouter-reviewed-fill.png'))
+        finally:browser.close()
+
+
 def test_bilingual_reviewed_answers_and_missing_facts():
     store.save_profile({'first_name':'Fixture','last_name':'Candidate','email':'fixture@example.test','phone':'123'})
     store.set_setting('candidate_context',{'education':[{'degree':'Computer Science','level':'masters','completed':True}],
@@ -118,7 +162,8 @@ def test_bilingual_reviewed_answers_and_missing_facts():
 
 def test_explicit_local_model_selection_preserves_configuration(monkeypatch):
     import forgeapply.extension_api as bridge
-    previous={'provider':'openai','model':'existing-model','allow_remote':False,'base_url':'http://127.0.0.1:1234'}
+    previous={'provider':'openai','model':'existing-model','allow_remote':False,'base_url':'http://127.0.0.1:1234',
+              'num_predict':3072,'num_ctx':16384,'think':True,'temperature':0.2}
     store.set_setting('llm',previous)
     monkeypatch.setattr(bridge,'local_models',lambda identifier:{'models':['fixture-local'],'available':True})
     with TestClient(app,base_url='http://127.0.0.1:8765') as client:
@@ -128,6 +173,7 @@ def test_explicit_local_model_selection_preserves_configuration(monkeypatch):
         response=client.post('/api/extension/local-model',headers=headers,json={'model':'fixture-local'})
         assert response.status_code==200
         assert store.get_setting('llm')['model']=='fixture-local'
+        assert all(store.get_setting('llm')[key]==previous[key] for key in ('num_predict','num_ctx','think','temperature'))
         assert not store.get_setting('llm')['allow_remote']
         assert store.get_setting('llm_selection_history')[-1]['settings']==previous
 
@@ -256,6 +302,59 @@ def test_real_mv3_pair_inspect_fill_upload_next_and_revoke(tmp_path,extension_ba
         finally: context.close()
 
 
+@pytest.mark.parametrize('control',['fill','runAgent'])
+def test_real_extension_fills_adjacent_labels_despite_optional_password(tmp_path,extension_backend,control):
+    """Exercise both UI paths on RoboForm-style markup, with synthetic facts only."""
+    extension=Path('extension').resolve()
+    store.save_profile({'first_name':'Fixture','last_name':'Candidate','email':'fixture@example.test',
+                        'phone':'+39 351 000 0000','city':'Milano','country':'Italy',
+                        'street_address':'Synthetic street 1','province':'MI','postal_code':'20100',
+                        'portfolio':'https://example.test/projects'})
+    html=(Path('examples/fixtures/autofill-test.html')).read_text(encoding='utf-8')
+    with FixtureServer(application_html=html) as fixture,sync_playwright() as playwright:
+        context=playwright.chromium.launch_persistent_context(str(tmp_path/'browser'),channel='chromium',headless=True,
+            args=[f'--disable-extensions-except={extension}',f'--load-extension={extension}'])
+        try:
+            worker=context.service_workers[0] if context.service_workers else context.wait_for_event('serviceworker')
+            identifier=worker.url.split('/')[2]
+            worker.evaluate('async()=>await chrome.storage.local.set({aiMode:false})')
+            page=context.new_page();page.goto(fixture.url+'/autofill-test')
+            tab_id=worker.evaluate("async()=> (await chrome.tabs.query({})).find(t=>(t.url||'').includes('/autofill-test')).id")
+            panel=context.new_page();panel.goto(f'chrome-extension://{identifier}/panel.html?tab={tab_id}')
+            code=httpx.post(f'http://127.0.0.1:{extension_backend}/api/extension/pairing-code').json()['code']
+            panel.locator('#settingsToggle').click();panel.locator('#backendPort').fill(str(extension_backend))
+            panel.locator('#pairCode').fill(code);panel.locator('#pair').click()
+            expect(panel.locator('#connection')).to_contain_text('Connected locally')
+            panel.locator('#settingsToggle').click();panel.locator('#'+control).click()
+            expect(page.locator('[name="02frstname"]')).to_have_value('Fixture',timeout=15000)
+            expect(page.locator('[name="04lastname"]')).to_have_value('Candidate')
+            expect(page.locator('[name="04fullname"]')).to_have_value('Fixture Candidate')
+            expect(page.locator('[name="10address1"]')).to_have_value('Synthetic street 1')
+            expect(page.locator('[name="13adr_city"]')).to_have_value('Milano')
+            expect(page.locator('[name="14adrstate"]')).to_have_value('MI')
+            expect(page.locator('[name="15_country"]')).to_have_value('Italy')
+            expect(page.locator('[name="16addr_zip"]')).to_have_value('20100')
+            expect(page.locator('[name="23cellphon"]')).to_have_value('+39 351 000 0000')
+            expect(page.locator('[name="24emailadr"]')).to_have_value('fixture@example.test')
+            expect(page.locator('[name="25web_site"]')).to_have_value('https://example.test/projects')
+            if control=='runAgent':
+                expect(panel.locator('#agentGoal')).to_contain_text('human review')
+                assert panel.evaluate('ForgeApplyAgent.run.verified')==11
+            else:expect(panel.locator('#summary')).to_contain_text('11 fields verified')
+            for name in ('20homephon','21workphon','30_user_id','31password','41ccnumber','43cvc',
+                         '44cc_uname','46cccstsvc','60pers_sex','61pers_ssn','62driv_lic','68__income','unknown'):
+                expect(page.locator(f'[name="{name}"]')).to_have_value('')
+            assert not panel.evaluate('snapshot.needs_login') and not fixture.submissions
+            expect(panel.locator('#fields')).to_contain_text('Unknown qualification')
+            # Genuine login still pauses both paths, even inside an accessible frame.
+            page.goto(fixture.url+'/login')
+            expect(panel.locator('#site')).to_contain_text('/login')
+            panel.locator('#'+control).click()
+            expect(panel.locator('#summary' if control=='fill' else '#agentGoal')).to_contain_text('Sign in')
+            expect(page.locator('[type=password]')).to_have_value('')
+        finally:context.close()
+
+
 def test_real_mv3_italian_form_letters_review_missing_answers_and_stale_state(tmp_path,extension_backend):
     extension=Path('extension').resolve()
     store.save_profile({'first_name':'Fixture','last_name':'Candidate','email':'fixture@example.test','phone':'+39 351 000 0000','country':'Italy'})
@@ -321,3 +420,93 @@ def test_real_mv3_italian_form_letters_review_missing_answers_and_stale_state(tm
             assert not errors and fixture.submissions==[]
             panel.screenshot(path=str(tmp_path/'italian-panel.png'),full_page=True)
         finally: context.close()
+
+
+@pytest.mark.parametrize('control',['fill','runAgent'])
+def test_real_agent_approve_edit_learn_reuse_switch_model_and_attach_tailored_cv(tmp_path,extension_backend,monkeypatch,control):
+    import forgeapply.extension_api as bridge
+    from forgeapply.llm import DecisionModel
+    store.save_profile({'first_name':'Fixture','last_name':'Candidate'})
+    store.set_setting('candidate_context',{'skills':{'programming':['Python','SQL']}})
+    store.set_setting('llm',{'provider':'ollama','model':'fixture-one','num_ctx':16384,'num_predict':3072})
+    monkeypatch.setattr(bridge,'local_models',lambda identifier:{'models':['fixture-one','fixture-two'],
+        'selected':store.get_setting('llm')['model'],'available':True})
+    original_get=httpx.get
+    monkeypatch.setattr(httpx,'get',lambda url,**kwargs:httpx.Response(200,json={'models':[{'name':'fixture-one'},{'name':'fixture-two'}]},
+        request=httpx.Request('GET',url)) if url.endswith('/api/tags') else original_get(url,**kwargs))
+    calls=[]
+    def json_reply(self,system,user,**kwargs):
+        data=json.loads(user);calls.append(data)
+        return {'answers':[{'field_index':q['index'],'value':'' if q['label']=='Badge name' else 'Python',
+                            'fact_id':'profile.first_name' if q['label']=='Badge name' else None,
+                            'evidence_ids':['profile.first_name'] if q['label']=='Badge name' else ['skills'],
+                            'needs_information':False} for q in data['questions']]}
+    monkeypatch.setattr(DecisionModel,'json',json_reply)
+    monkeypatch.setattr(DecisionModel,'test_response',lambda self:{'ok':True,'model':self.model,'detail':'Synthetic response verified.'})
+    html='''<html lang=en><h1>Data Engineer</h1>
+      <script type="application/ld+json">{"@type":"JobPosting","title":"Data Engineer","hiringOrganization":{"name":"Synthetic Employer"},"description":"<p>SQL expertise required. Rust optional.</p>"}</script>
+      <form><label>First name<input name=first required></label><label>Badge name<input name=badge required></label>
+      <label>Preferred programming stack<input name=stack required></label><label>CV<input name=cv type=file accept=.pdf></label>
+      <label>Motivation letter<input name=letter type=file accept=.pdf></label></form></html>'''
+    extension=Path('extension').resolve()
+    with FixtureServer(application_html=html) as fixture,sync_playwright() as playwright:
+        context=playwright.chromium.launch_persistent_context(str(tmp_path/'browser'),channel='chromium',headless=True,
+            args=[f'--disable-extensions-except={extension}',f'--load-extension={extension}'])
+        try:
+            worker=context.service_workers[0] if context.service_workers else context.wait_for_event('serviceworker')
+            identifier=worker.url.split('/')[2]
+            worker.evaluate('async()=>await chrome.storage.local.set({aiMode:true})')
+            page=context.new_page();page.goto(fixture.url+'/learn')
+            tab_id=worker.evaluate("async()=> (await chrome.tabs.query({})).find(t=>(t.url||'').includes('/learn')).id")
+            panel=context.new_page();panel.goto(f'chrome-extension://{identifier}/panel.html?tab={tab_id}')
+            code=httpx.post(f'http://127.0.0.1:{extension_backend}/api/extension/pairing-code').json()['code']
+            panel.locator('#settingsToggle').click();panel.locator('#backendPort').fill(str(extension_backend))
+            panel.locator('#pairCode').fill(code);panel.locator('#pair').click()
+            expect(panel.locator('#connection')).to_contain_text('Connected locally')
+            panel.locator('#localModel').select_option('fixture-two');panel.locator('#useModel').click()
+            expect(panel.locator('#connection')).to_contain_text('fixture-two')
+            assert store.get_setting('llm')['num_predict']==3072 and store.get_setting('llm')['num_ctx']==16384
+            panel.locator('#testModel').click();expect(panel.locator('#modelResult')).to_contain_text('Passed: fixture-two')
+            panel.locator('#settingsToggle').click();panel.locator('#'+control).click()
+            if control=='runAgent':expect(panel.locator('#agentGoal')).to_contain_text('human review')
+            expect(page.locator('[name=first]')).to_have_value('Fixture')
+            expect(page.locator('[name=badge]')).to_have_value('')
+            expect(page.locator('[name=stack]')).to_have_value('')
+            expect(panel.get_by_label('Badge name',exact=True)).to_have_value('Fixture')
+            assert calls and calls[0]['verified_evidence']
+            card=panel.locator('.answerCard').filter(has=panel.get_by_label('Badge name',exact=True))
+            card.get_by_role('button',name='Approve & fill',exact=True).click()
+            expect(page.locator('[name=badge]')).to_have_value('Fixture')
+            card=panel.locator('.answerCard').filter(has=panel.get_by_label('Preferred programming stack',exact=True))
+            card.get_by_role('button',name='Reject & edit',exact=True).click()
+            expect(panel.get_by_label('Preferred programming stack',exact=True)).to_have_value('')
+            assert not any(a['answer']=='Python' for a in store.list_answers())
+            panel.get_by_label('Preferred programming stack',exact=True).fill('SQL')
+            card.get_by_role('button',name='Approve & fill',exact=True).click()
+            expect(page.locator('[name=stack]')).to_have_value('SQL')
+            expect(panel.locator('#summary')).to_contain_text('saved locally')
+            assert any(a['answer']=='SQL' and a['source']=='user:extension-reviewed-exact' for a in store.list_answers())
+            panel.locator('#settingsToggle').click();panel.locator('#aiMode').uncheck();panel.locator('#settingsToggle').click()
+            count=len(calls);page.reload();panel.locator('#fill').click()
+            expect(page.locator('[name=badge]')).to_have_value('Fixture')
+            expect(page.locator('[name=stack]')).to_have_value('SQL')
+            assert len(calls)==count
+            panel.locator('#cv').click()
+            expect(panel.locator('#letterText')).to_have_value(re.compile('SQL, Python'))
+            assert 'Rust' not in panel.locator('#letterText').input_value()
+            panel.locator('#attachPDF').click()
+            expect(panel.locator('#summary')).to_contain_text('Reviewed PDF selected')
+            assert page.locator('[name=cv]').evaluate('e=>e.files[0].type')=='application/pdf'
+            panel.locator('#attachPDF').click()
+            expect(panel.locator('#error')).to_contain_text('Existing documents stay selected')
+            panel.locator('#letter').click()
+            expect(panel.locator('#letterText')).to_have_value(re.compile('Data Engineer position at Synthetic Employer'))
+            panel.locator('#fileTarget').select_option(label='Motivation letter')
+            panel.locator('#attachPDF').click()
+            expect(panel.locator('#summary')).to_contain_text('Reviewed PDF selected')
+            assert page.locator('[name=letter]').evaluate('e=>e.files[0].name')=='forgeapply-letter.pdf'
+            assert page.locator('[name=cv]').evaluate('e=>e.files[0].name')=='forgeapply-cv.pdf'
+            page.goto(fixture.url+'/other-role')
+            expect(panel.locator('#site')).to_contain_text('/other-role')
+            assert panel.locator('#attachPDF').is_disabled() and not fixture.submissions
+        finally:context.close()

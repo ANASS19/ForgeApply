@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Bounded local document extraction. Extracted text is unverified source material."""
 import hashlib
 from pathlib import Path

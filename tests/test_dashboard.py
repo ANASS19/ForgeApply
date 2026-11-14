@@ -10,7 +10,9 @@ from forgeapply.app import app
 from forgeapply import store
 
 
-def test_dashboard_saved_profile_context_and_safe_defaults(tmp_path):
+def test_dashboard_saved_profile_context_and_safe_defaults(tmp_path,monkeypatch):
+    monkeypatch.delenv('OPENROUTER_API_KEY',raising=False)
+    monkeypatch.delenv('FORGEAPPLY_API_KEY',raising=False)
     store.save_profile({'first_name':'Fixture','last_name':'Candidate','email':'fixture@example.org'})
     store.set_setting('candidate_context',{'education':[{'degree':'Fixture MSc','completed':True,'thesis':'Preserve original thesis'}],
                                           'languages':{'Italian':'Beginner'},'skills':{'programming':['Python'],'planned':['LearningOnly']},
@@ -72,6 +74,43 @@ def test_dashboard_saved_profile_context_and_safe_defaults(tmp_path):
                 assert 'SQL' in background['skills']['additional']
                 page.get_by_role('button',name='AI Settings',exact=True).click()
                 page.wait_for_function("document.querySelector('#llmForm [name=model]').value!==''")
+                assert not page.locator('[name=allow_remote]').is_checked()
+                page.locator('[name=provider]').select_option('anthropic')
+                assert page.locator('[name=base_url]').input_value()=='https://api.anthropic.com/v1'
+                assert page.locator('[name=api_key_env]').input_value()=='ANTHROPIC_API_KEY'
+                assert not page.locator('[name=allow_remote]').is_checked()
+                page.locator('[name=provider]').select_option('deepseek')
+                assert page.locator('[name=base_url]').input_value()=='https://api.deepseek.com'
+                assert page.locator('[name=api_key_env]').input_value()=='DEEPSEEK_API_KEY'
+                page.route('**/api/llm/openrouter-models',lambda route:route.fulfill(json={
+                    'models':['google/gemma-4-31b-it:free'],'model_details':[{'id':'google/gemma-4-31b-it:free',
+                    'input_modalities':['text','image'],'supported_parameters':['response_format']}]}))
+                page.locator('[name=provider]').select_option('openrouter')
+                assert page.locator('[name=base_url]').input_value()=='https://openrouter.ai/api/v1'
+                assert page.locator('[name=api_key_env]').input_value()=='OPENROUTER_API_KEY'
+                expect(page.locator('#availableModels option')).to_have_count(1)
+                page.locator('[name=model]').fill('google/gemma-4-31b-it:free')
+                expect(page.locator('#modelCapabilities')).to_contain_text('Image input advertised')
+                assert not page.locator('[name=allow_remote]').is_checked()
+                page.locator('#llmForm details > summary').click()
+                page.locator('[name=allow_remote]').check()
+                page.get_by_role('button',name='Save model settings',exact=True).click()
+                expect(page.locator('#notice')).to_contain_text('Model settings saved')
+                assert store.get_setting('llm')['provider']=='openrouter'
+                page.get_by_role('button',name='Test saved model (synthetic data)',exact=True).click()
+                expect(page.locator('#providerHealth')).to_contain_text('missing_key')
+                page.locator('#providerKeySetup > summary').click()
+                page.locator('#sessionApiKey').fill('synthetic-ui-session-key')
+                page.get_by_role('button',name='Save provider & use key for this session',exact=True).click()
+                expect(page.locator('#sessionKeyStatus')).to_contain_text('Key configured in OPENROUTER_API_KEY')
+                expect(page.locator('#sessionApiKey')).to_have_value('')
+                assert 'synthetic-ui-session-key' not in str(store.get_setting('llm'))
+                page.locator('#sessionApiKey').fill('must-not-follow-provider-switch')
+                page.locator('#inferencePreset').select_option('qwen3.5:4b')
+                expect(page.locator('#sessionApiKey')).to_have_value('')
+                assert page.locator('[name=provider]').input_value()=='ollama'
+                assert page.locator('[name=base_url]').input_value()=='http://127.0.0.1:11434'
+                assert page.locator('[name=api_key_env]').input_value()==''
                 assert not page.locator('[name=allow_remote]').is_checked()
                 page.get_by_role('button',name='Job Queue',exact=True).click()
                 expect(page.get_by_role('link',name='Source opportunity',exact=True)).to_have_attribute('href','https://www.linkedin.com/jobs/view/fixture-123')

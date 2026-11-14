@@ -50,3 +50,10 @@ The dashboard offers a native OpenRouter preset, public model autocomplete and a
 Visible Chromium against the running local app loaded the live catalog (471 text models at this check), selected `google/gemma-4-31b-it:free`, displayed image/JSON capability hints, and passed a 390-pixel width check. No key was entered, settings were not saved, and no inference request was made. The catalog is not evidence of authenticated generation. The backend was restarted with this integration; profile/context/model/answers/jobs/pairing hashes matched the pre-restart backup. Its version remains 0.4.4; the existing extension protocol is unchanged.
 
 Private evidence is under `%USERPROFILE%\.forgeapply\qa\openrouter`. The next required user step is entering a key locally and running **Test saved model (synthetic data)**. OpenRouter generation/account limits and per-model answer quality have not been live-verified. See [setup instructions](USAGE.md#use-openrouter).
+
+
+## Checkpoint publication ordering
+
+The publication audit reproduced a race where the panel displayed review ready before backend history finished saving and a reader still saw running. The executor now waits for backend acknowledgement before showing the updated state. The actual multi-page regressions hold the final save behind an explicit gate, verify that the UI has not announced completion while durable history is still running, then release the save and verify both agree. The test wait uses a CSP-compatible function and does not weaken extension security policy.
+
+The public branding describes an application harness with grounded memory. Language-specific and provider-specific setup lives in technical documentation; the headline does not imply every language is verified. Multi-agent orchestration stays on the roadmap. Apache-2.0, NOTICE and source SPDX notices identify creator Anass Nassiri (ANASS19).

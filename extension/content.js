@@ -1,6 +1,8 @@
+// SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+// SPDX-License-Identifier: Apache-2.0
 // Runs only in Chrome's isolated world after an explicit extension action.
 (() => {
-  const VERSION='workday-catalog-6';
+  const VERSION='form-labels-login-7';
   if (globalThis.ForgeApplyPage?.version===VERSION) return;
   const refs = new Map();
   const observedChoices=new WeakMap();
@@ -16,9 +18,21 @@
   const visible = e => { const r=e.getBoundingClientRect(); return r.width>0&&r.height>0; };
   // Yield to controlled-input handlers without waiting for background-tab animation frames.
   const settleDOM=()=>new Promise(resolve=>{const channel=new MessageChannel();channel.port1.onmessage=()=>{channel.port1.close();channel.port2.close();resolve();};channel.port2.postMessage(null);});
+  function adjacentLabel(e){
+    // Legacy forms often put plain text in the preceding cell/column. Never take a
+    // whole row's text or cross a container holding unrelated controls.
+    const controls='input,select,textarea,button,[contenteditable=true],[role=combobox]';
+    for(let branch=e,depth=0;branch&&depth<2;branch=branch.parentElement,depth++){
+      if(depth){const peers=[...branch.querySelectorAll(controls)];if(peers.length!==1&&!peers.every(p=>p.tagName==='SELECT'))break;}
+      const previous=branch.previousElementSibling;
+      if(!previous||!visible(previous)||previous.matches(controls+',a')||previous.querySelector(controls+',a'))continue;
+      const text=previous.textContent.trim();if(text&&text.length<=140)return text;
+    }
+    return '';
+  }
   function label(e) {
     const clean = node => { if(!node)return ''; const copy=node.cloneNode(true);copy.querySelectorAll('input,select,textarea,button,[role=alert],[role=listbox],[data-automation-id=selectedItem],[data-automation-id=selectedItemLabel],[data-automation-id=errorMessage],.field-error,.error-message').forEach(x=>x.remove());return copy.textContent.trim(); };
-    return (clean(e.labels?.[0])||e.getAttribute('aria-label')||(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.ownerDocument.getElementById(id)?.textContent||'').join(' ').trim()||e.getAttribute('placeholder')||e.closest('fieldset')?.querySelector('legend')?.textContent||'').slice(0,500);
+    return (clean(e.labels?.[0])||e.getAttribute('aria-label')||(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.ownerDocument.getElementById(id)?.textContent||'').join(' ').trim()||e.getAttribute('placeholder')||adjacentLabel(e)||e.closest('fieldset')?.querySelector('legend')?.textContent||'').slice(0,500);
   }
   const markedRequired = text => /(?:[*＊]+\s*(?:(?:campo\s+)?(?:obbligatori[oa]|required|mandatory|obligatoire))?|[\[(]\s*(?:campo\s+)?(?:obbligatori[oa]|required|mandatory|obligatoire)\s*[\])])\s*[:.]*\s*$/i.test(text);
   const customCombo = e => (e.getAttribute('role')==='combobox'||e.getAttribute('aria-haspopup')==='listbox')&&e.tagName!=='INPUT'&&e.tagName!=='SELECT';
@@ -119,6 +133,21 @@
     root.querySelectorAll('iframe').forEach(frame=>{try{if(frame.contentDocument)documents(frame.contentDocument,result);}catch{}});
     return result;
   }
+  function loginRequired(doc){
+    const usable=e=>visible(e)&&!e.disabled&&!e.readOnly;
+    return [...doc.querySelectorAll('input[type=password]')].filter(usable).some(password=>{
+      if(password.autocomplete==='new-password')return false;
+      const scope=password.closest('form,[role=dialog]')||doc.body;
+      const inputs=[...scope.querySelectorAll('input,textarea,select,[contenteditable=true]')].filter(usable);
+      if(inputs.filter(e=>e.type==='password').length!==1)return false;
+      const identity=inputs.filter(e=>!['password','hidden','submit','button','reset','checkbox'].includes(e.type));
+      if(identity.length>2||identity.some(e=>!['text','email','tel'].includes(e.type)||
+        !/user(?:name|[ _-]?id)?|e[ _-]?mail|login|account|phone|telefono|utente/i.test([label(e),e.name,e.id,e.autocomplete].join(' '))))return false;
+      const loginAction=[...scope.querySelectorAll('button,input[type=submit],a[role=button]')].some(e=>usable(e)&&
+        /^(?:sign[ -]?in|log[ -]?in|login|accedi|entra)(?:\s+(?:to|with|using)\b.*)?$/i.test((e.getAttribute('aria-label')||e.value||e.textContent).trim()));
+      return loginAction||password.autocomplete==='current-password';
+    });
+  }
   function inspect() {
     refs.clear();const fields=[],navigation=[],add_controls=[];let skippedFrames=0,truncated_controls=0;
     for(const doc of documents()) {
@@ -149,10 +178,10 @@
     }
     let job={title:document.querySelector('h1')?.textContent?.trim().slice(0,500)||document.title,company:'',location:'',description:(document.querySelector('main')?.innerText||'').slice(0,20000)};
     for(const node of document.querySelectorAll('script[type="application/ld+json"]')) {
-      try { const parsed=JSON.parse(node.textContent);for(const item of (Array.isArray(parsed)?parsed:parsed['@graph']||[parsed]))if(item['@type']==='JobPosting')job={title:String(item.title||job.title).slice(0,500),company:String(item.hiringOrganization?.name||'').slice(0,300),location:String(item.jobLocation?.address?.addressLocality||'').slice(0,300),description:job.description}; }catch{}
+      try { const parsed=JSON.parse(node.textContent);for(const item of (Array.isArray(parsed)?parsed:parsed['@graph']||[parsed]))if(item['@type']==='JobPosting')job={title:String(item.title||job.title).slice(0,500),company:String(item.hiringOrganization?.name||'').slice(0,300),location:String(item.jobLocation?.address?.addressLocality||'').slice(0,300),description:item.description?new DOMParser().parseFromString(String(item.description),'text/html').body.textContent.slice(0,20000):job.description}; }catch{}
     }
     const stage=document.querySelector('[aria-current=step],[data-automation-id=progressBarActiveStep]')?.textContent.trim()||[...document.querySelectorAll('h1,h2')].find(e=>visible(e)&&/^(?:final review|review your application|riepilogo|revisione)\b/i.test(e.textContent.trim()))?.textContent.trim()||'';
-    const needs_login=[...document.querySelectorAll('input[type=password]')].some(visible);
+    const needs_login=documents().some(loginRequired);
     const final_review=/(?:\breview\b|\briepilogo\b|\brevisione\b|\d(?:review|riepilogo|revisione)\b)/i.test(stage),site_error=[...document.querySelectorAll('[role=alert],[data-automation-id=errorMessage]')].some(e=>visible(e)&&/page error|server error|errore (?:del server|di pagina)/i.test(e.textContent));
     if(final_review)navigation.length=0;
     snapshot={snapshot_id:crypto.randomUUID(),url:location.href,page_language:document.documentElement.lang||'',stage,final_review,site_error,needs_login,fields,navigation,add_controls,truncated_controls,job,skipped_frames:skippedFrames,page_text:(document.body?.innerText||'').slice(0,6000)};
@@ -308,5 +337,18 @@
       e.scrollIntoView({block:'center'});e.focus();e.click();
     });
   }
-  globalThis.ForgeApplyPage={version:VERSION,inspect,fill,next,chooseFile};
+  async function attachReviewedPDF(token,id,document){
+    const {element:e}=resolve(token,id);
+    if(e.type!=='file'||e.files.length)throw Error('Choose an empty document field. Existing documents stay selected.');
+    if(e.accept&&!e.accept.split(',').some(t=>['.pdf','application/pdf','application/*','*/*'].includes(t.trim().toLowerCase())))throw Error('This field does not accept PDF documents.');
+    if(!document.base64||document.base64.length>7000000)throw Error('Invalid generated document size.');
+    const raw=atob(document.base64);if(!raw.startsWith('%PDF-'))throw Error('The generated document is not a PDF.');
+    const win=e.ownerDocument.defaultView,transfer=new win.DataTransfer();
+    transfer.items.add(new win.File([Uint8Array.from(raw,c=>c.charCodeAt(0))],document.filename,{type:'application/pdf'}));
+    pointAt(e);e.files=transfer.files;e.dispatchEvent(new win.Event('input',{bubbles:true}));e.dispatchEvent(new win.Event('change',{bubbles:true}));
+    await settleDOM();
+    const rejected=!e.validity.valid;
+    return {snapshot:inspect(),attached:!rejected&&e.files.length>0,message:rejected?'Upload rejected: '+e.validationMessage:'Reviewed PDF selected. Verify upload acceptance on the page.'};
+  }
+  globalThis.ForgeApplyPage={version:VERSION,inspect,fill,next,chooseFile,attachReviewedPDF};
 })();

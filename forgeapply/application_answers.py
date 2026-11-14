@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Bilingual drafts built from verified structured facts, without model inference."""
 from __future__ import annotations
 import re
@@ -41,6 +43,31 @@ def evidence_catalog(profile:dict,context:dict) -> list[dict]:
     if skills:facts.append({'id':'skills','value':skills})
     if context.get('languages'):facts.append({'id':'languages','value':context['languages']})
     return facts
+
+
+def retrieve_reviewed_answers(questions:list[dict],answers:list[dict],profile:dict,*,limit:int=8) -> list[dict]:
+    """Local lexical retrieval of human-approved answers, with source and scope.
+
+    Retrieved answers support reviewable proposals; they never bypass field type,
+    legal declarations, or exact-fact guards. No embeddings or remote index needed.
+    """
+    tokens=lambda text:set(re.findall(r'[\w]{3,}',text.casefold()))-{'the','and','your','you','are','what','with','this','how','per','con','una','dei','della'}
+    query=tokens(' '.join(q.get('label','') for q in questions))
+    ranked=[]
+    for answer in answers:
+        pattern=answer.get('pattern','')
+        if not answer.get('enabled',True) or not answer.get('source','').startswith('user:') or SENSITIVE_QUESTION.search(pattern):continue
+        if re.search(r'why|perch[eé]|company|azienda|this (?:role|position)|quest[oa] (?:ruolo|posizione)|birth|nascita',pattern,re.I):continue
+        score=len(query&tokens(pattern))
+        if not score:continue
+        path=answer.get('fact_path','')
+        value=profile.get(path.removeprefix('profile.')) if path.startswith('profile.') else answer.get('answer','')
+        if not value:continue
+        ranked.append((score,{'id':'reviewed_answer.'+str(answer['id']),
+                              'value':{'question':pattern,'answer':str(value)[:8000]},
+                              'source':answer['source'],'verified_at':answer.get('verified_at',''),
+                              'scope_host':answer.get('scope_host','')}))
+    return [fact for _,fact in sorted(ranked,key=lambda item:(-item[0],item[1]['id']))[:limit]]
 
 
 def fact_fragments(profile:dict,context:dict,language:str,job_context:str='') -> tuple[dict,list[dict]]:
@@ -104,7 +131,7 @@ def draft_answer(label:str,profile:dict,context:dict,*,language='auto',page_lang
     return {'value':body,'kind':kind,'language':lang,'source':'verified_fact_template','facts_used':sources,'needs_review':True}
 
 
-def draft_resume(profile:dict,context:dict,language:str='en') -> dict|None:
+def draft_resume(profile:dict,context:dict,language:str='en',*,job_description:str='') -> dict|None:
     """A transparent ATS-friendly draft. No employment or skills are inferred from a role title."""
     it=language=='it'
     sources=[];lines=[]
@@ -133,6 +160,8 @@ def draft_resume(profile:dict,context:dict,language:str='en') -> dict|None:
             if isinstance(e.get(key),list):experience.extend('- '+x for x in e[key] if isinstance(x,str) and x.strip())
         sources.append({'id':f'experience.{i}','text':e['title']+' - '+e['employer']})
     skills=list(dict.fromkeys(s for group,values in context.get('skills',{}).items() if group not in ('independent_learning','planned','learning') for s in values if isinstance(s,str)))
+    # Emphasize existing skills requested by this vacancy, without adding any.
+    if job_description:skills.sort(key=lambda skill:not bool(re.search(r'(?<!\w)'+re.escape(skill)+r'(?!\w)',job_description,re.I)))
     if skills:sources.append({'id':'skills','text':', '.join(skills)})
     certificates=[]
     for i,item in enumerate(context.get('certifications',[])):

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Human-visible local Playwright browser with deterministic form filling + optional AI fallback.
 
 Never submit silently: final submission requires user click, or an explicit per-job
@@ -34,8 +36,16 @@ FIELD_SCRIPT = '''() => Array.from(document.querySelectorAll('input:not([type=hi
  const id=e.id||'';
  const labelText=node=>{if(!node)return '';const copy=node.cloneNode(true);copy.querySelectorAll('input,select,textarea,button').forEach(c=>c.remove());return copy.textContent.trim();};
  const labelledBy=(e.getAttribute('aria-labelledby')||'').split(/\\s+/).map(id=>document.getElementById(id)?.textContent||'').join(' ').trim();
+ const adjacentLabel=()=>{
+  const controls='input,select,textarea,button,[contenteditable=true],[role=combobox]';
+  for(let branch=e,depth=0;branch&&depth<2;branch=branch.parentElement,depth++){
+   if(depth){const peers=[...branch.querySelectorAll(controls)];if(peers.length!==1&&!peers.every(p=>p.tagName==='SELECT'))break;}
+   const previous=branch.previousElementSibling;if(!previous||previous.matches(controls+',a')||previous.querySelector(controls+',a'))continue;
+   const r=previous.getBoundingClientRect(),text=previous.textContent.trim();if(r.width>0&&r.height>0&&text&&text.length<=140)return text;
+  }return '';
+ };
  const label=labelText(id && document.querySelector('label[for="'+CSS.escape(id)+'"]')) ||
-  labelText(e.closest('label')) || e.getAttribute('aria-label') || labelledBy || e.getAttribute('placeholder') ||
+  labelText(e.closest('label')) || e.getAttribute('aria-label') || labelledBy || e.getAttribute('placeholder') || adjacentLabel() ||
   e.closest('fieldset')?.querySelector('legend')?.innerText || '';
  const custom=e.getAttribute('role')==='combobox' && !['INPUT','SELECT'].includes(e.tagName);
  const customValue=e.getAttribute('aria-valuetext')||e.dataset.value||'';

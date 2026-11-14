@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Typed, bounded browser requests; no arbitrary JavaScript or model-supplied selectors."""
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator

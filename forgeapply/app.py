@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Local-only ForgeApply API and dashboard."""
 from __future__ import annotations
 import csv
@@ -11,7 +13,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 from . import store, discovery
@@ -19,7 +21,7 @@ from . import __version__
 from .browser import browser, SCREEN_DIR
 from .config import CV_DIR, PORT
 from .browser_tools import BrowserToolCall
-from .llm import DecisionModel,DEFAULT_LOCAL_MODEL
+from .llm import DecisionModel,DEFAULT_LOCAL_MODEL,openrouter_models
 from urllib.parse import urlsplit
 from .extension_api import router as extension_router,extension_origin
 
@@ -123,11 +125,13 @@ class AutoFillIn(BaseModel):
     use_ai:bool=False; use_vision:bool=False
 
 class LLMSettings(BaseModel):
-    provider:Literal['ollama','openai']='ollama'; model:str=DEFAULT_LOCAL_MODEL; base_url:str=''
+    provider:Literal['ollama','openai','anthropic','deepseek','openrouter']='ollama'; model:str=DEFAULT_LOCAL_MODEL; base_url:str=''
+    api_key_env:str=Field(default='',max_length=100,pattern=r'^(?:[A-Z][A-Z0-9_]*_API_KEY)?$')
     allow_remote:bool=False
     think:bool=False
     num_ctx:int=Field(default=8192,ge=1024,le=131072)
     num_predict:int=Field(default=768,ge=64,le=8192)
+    document_num_predict:int=Field(default=2048,ge=256,le=8192)
     temperature:float=Field(default=0,ge=0,le=2)
 
 class OCRIn(BaseModel):
@@ -282,10 +286,42 @@ def export():
 @app.get('/api/llm')
 def llm(): return store.get_setting('llm',LLMSettings().model_dump())
 
+@app.get('/api/llm/local-models')
+def llm_local_models():
+    from .extension_api import local_models
+    return local_models('dashboard')
+
 @app.put('/api/llm')
 def save_llm(value:LLMSettings):
     if value.base_url and not value.base_url.startswith(('http://','https://')): raise HTTPException(400,'Invalid base URL')
     store.set_setting('llm',value.model_dump());return {'ok':True}
+
+@app.get('/api/llm/openrouter-models')
+def llm_openrouter_models():
+    def catalog():
+        details=openrouter_models(refresh=True)
+        return {'models':[m['id'] for m in details if not m['output_modalities'] or 'text' in m['output_modalities']],
+                'model_details':details,'inference_verified':False,'source':'OpenRouter public catalog'}
+    return wrap(catalog)
+
+@app.post('/api/llm/session-key')
+async def llm_session_key(request:Request) -> dict:
+    # Validate manually so invalid secret inputs never appear in a Pydantic error response.
+    try:value=await request.json()
+    except (ValueError,UnicodeDecodeError):raise HTTPException(400,'Send a JSON object containing the API key') from None
+    key=value.get('key') if isinstance(value,dict) else None
+    if not isinstance(key,str) or not key.strip() or len(key)>4096 or not key.isascii() or any(c.isspace() for c in key.strip()) or '\x00' in key:
+        raise HTTPException(400,'Enter an API key without spaces or line breaks (maximum 4096 characters)')
+    config=store.get_setting('llm',{})
+    if (value.get('provider')!=config.get('provider','ollama') or
+        any(value.get(k,'')!=(config.get(k) or '') for k in ('base_url','api_key_env'))):
+        raise HTTPException(409,'The selected provider changed. Save its settings and enter the key again.')
+    # Key setup sends no provider requests and does not grant remote inference consent.
+    model=wrap(DecisionModel.from_settings,config|{'allow_remote':True})
+    if model.provider=='ollama' or (model.is_local and not config.get('api_key_env')):
+        raise HTTPException(400,'This local provider needs no key; configure an explicit key variable for an authenticated compatible server')
+    os.environ[model.api_key_env]=key.strip()
+    return {'ok':True,'api_key_env':model.api_key_env,'storage':'backend_session','restart_required':False}
 
 @app.post('/api/llm/health')
 def llm_health():
@@ -294,6 +330,10 @@ def llm_health():
         model=DecisionModel.from_settings(cfg)
         return model.health()
     return wrap(check)
+
+@app.post('/api/llm/test')
+def llm_test():
+    return wrap(lambda:DecisionModel.from_settings(store.get_setting('llm',{})).test_response())
 
 @app.post('/api/browser/open')
 def browser_open(value:BrowserNavigate): return wrap(browser.navigate,value.url)

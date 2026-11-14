@@ -1,6 +1,8 @@
+// SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+// SPDX-License-Identifier: Apache-2.0
 
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(()=>{});
-const WORKER_VERSION='0.4.3';
+const WORKER_VERSION='0.4.4';
 chrome.runtime.onInstalled.addListener(()=>{
   chrome.contextMenus.create({id:'forge-analyze',title:'ForgeApply — Analyze this page',contexts:['page','editable']});
 });
@@ -17,7 +19,7 @@ function policy(url) {
   return {restricted,host};
 }
 async function api(path,method='GET',body) {
-  if(!['/pair','/status','/plan','/jobs','/match','/activity','/answer','/reviewed-plan','/motivation-letter','/cv-draft','/document-pdf','/local-models','/local-model','/agent/decision','/agent/run'].includes(path))throw Error('Unsupported bridge operation');
+  if(!['/pair','/status','/plan','/jobs','/match','/activity','/answer','/reviewed-plan','/motivation-letter','/cv-draft','/document-pdf','/local-models','/local-model','/model-test','/agent/decision','/agent/run'].includes(path))throw Error('Unsupported bridge operation');
   const {pairToken,backendPort=8765}=await chrome.storage.local.get(['pairToken','backendPort']);
   if(!Number.isInteger(Number(backendPort))||backendPort<1024||backendPort>65535)throw Error('Invalid local backend port');
   const BASE='http://127.0.0.1:'+Number(backendPort);
@@ -44,9 +46,14 @@ async function pageCall(tabId,operation,args=[]) {
   const tab=await tabInfo(tabId);if(tab.restricted)throw Error('Native LinkedIn/Indeed inspection and automation are disabled. Import the URL and supply job details manually.');
   try {
     await chrome.scripting.executeScript({target:{tabId},files:['content.js']});
-    const results=await chrome.scripting.executeScript({target:{tabId},func:async(op,params)=>globalThis.ForgeApplyPage[op](...params),args:[operation,args]});
-    if(!results[0]?.result)throw Error('Page inspection returned no state');return results[0].result;
-  }catch(error){throw Error(error.message+' If access was revoked, invoke the toolbar or context menu on this tab again.');}
+    const results=await chrome.scripting.executeScript({target:{tabId},func:async(op,params)=>{
+      try{return {ok:true,data:await globalThis.ForgeApplyPage[op](...params)};}
+      catch(error){return {ok:false,error:error.message,code:error.code||'page_action_failed'};}
+    },args:[operation,args]});
+    const result=results[0]?.result;
+    if(!result)throw Error('Page inspection returned no state');
+    if(!result.ok)throw Object.assign(Error(result.error),{code:result.code});return result.data;
+  }catch(error){if(error.code)throw error;throw Error(error.message+' If access was revoked, invoke the toolbar or context menu on this tab again.');}
 }
 async function captureCurrentTab(tabId){
   const current=await tabInfo(tabId);if(current.restricted)throw Error('This platform stays manual.');
@@ -117,9 +124,16 @@ async function handle(message,sender) {
     case 'manual_answer':return api('/answer','POST',{question:message.question});
     case 'models':return api('/local-models');
     case 'choose_model':return api('/local-model','POST',{model:message.model});
+    case 'test_model':return api('/model-test','POST',{});
     case 'letter':return api('/motivation-letter','POST',message.letter);
     case 'cv':return api('/cv-draft','POST',message.letter);
     case 'document_pdf':return api('/document-pdf','POST',message.document);
+    case 'attach_document':{
+      const current=await tabInfo(message.tabId);
+      if(current.restricted||current.url!==message.url||!message.reviewed)throw Error('Review the document on the authorized application page before attaching.');
+      const document=await api('/document-pdf','POST',message.document);
+      return pageCall(message.tabId,'attachReviewedPDF',[message.token,message.snapshot_id,document]);
+    }
     case 'reviewed':{const current=await tabInfo(message.tabId);if(current.restricted||current.url!==message.snapshot.url)throw Error('Page changed; prepare again.');return api('/reviewed-plan','POST',{url:current.url,snapshot_id:message.snapshot.snapshot_id,fields:message.snapshot.fields,site_authorized:true,reviewed:true,answers:message.answers});}
     default:throw Error('Unknown extension request');
   }

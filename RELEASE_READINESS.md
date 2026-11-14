@@ -15,12 +15,15 @@ Windows Python 3.13, actual FastAPI server, SQLite and real Playwright Chromium 
 | Recovery | Fresh inspection after dynamic dependencies, one replaced-control retry, stale/manual edit protection, validation errors, full document navigation without clicking twice |
 | Extension agent | EN/IT bounded run-to-review, pause/reload/resume, local checkpoints, action trace, virtual cursor and manual checkpoints |
 | Catalog variants | Enter-to-search university/field-of-study references, virtualized degree/language lists, committed chips, ambiguous options and server errors |
-| Documents | Native CV chooser, reviewed bilingual CV/letter drafts, local PDF/text export; configured CVs retained |
+| Documents | Native CV chooser, vacancy-focused bilingual CV/letter drafts, reviewed PDF/text export and selected-field PDF attachment; configured CVs retained |
 | Local profile | Multiple editable background records, unknown metadata retained, learning-only skills excluded, completed degree checks |
-| Model assistance | Strict structured responses, reviewed references to current profile facts, host-scoped learned mappings, deterministic/manual fallback |
+| Model assistance | Strict responses, current profile references, approve/edit/remember, local retrieval of reviewed answers, preserved model options, format compatibility retry, deterministic/manual fallback |
+| OpenRouter | Native preset, live public model catalog, JSON/vision capability handling, masked session keys, distinct errors; authenticated generation mocked |
 | Privacy and storage | Origin/CSRF controls, loopback-only server, additive SQLite migrations, no credentials or applicant files in source |
 
-The full suite currently has 108 passing tests and one dependency deprecation warning. No tests are skipped. JavaScript syntax, dependency integrity and diff whitespace checks also pass. [Detailed reconstruction and evidence](docs/WORKDAY_VERIFICATION.md) distinguishes read-only public inspection from authenticated workflows.
+The full suite currently has 152 passing tests and one dependency deprecation warning. No tests are skipped. JavaScript syntax, dependency integrity and diff whitespace checks also pass. [Detailed reconstruction and evidence](docs/WORKDAY_VERIFICATION.md) distinguishes read-only public inspection from authenticated workflows.
+
+Preview 0.4.4 adds ordinary-form login/adjacent-label regressions, deterministic-first preparation, two actual MV3 approve/edit/learn/reuse/document-upload flows, provider contract tests and synthetic inference checks. The real RoboForm DOM smoke verified 11 synthetic fills across 40 controls. All five installed Ollama models passed a tiny JSON check; Qwen-VL also passed grounded-letter and synthetic-image tool-choice probes. Hosted calls remain mocked. See [0.4.4 evidence and boundaries](docs/FORM_PROVIDER_VERIFICATION.md).
 
 Preview 0.4.3 adds EN/IT regressions for dates filled before university commitment, independent-field continuation after lookup failure, legacy keyboard/tree catalogs, numbered proficiency choices, older checkpoint recovery and value-free validation diagnostics. Saved-fact/catalog mismatches no longer appear as missing applicant information. These controlled results do not identify the exact exception behind the owner's earlier zero-action live run.
 
@@ -38,7 +41,7 @@ A live local Qwen3.5 9B synthetic probe returned three exact profile references 
 - Review personal data defaults on every employer site. Birth answers are not saved as reusable screening answers; sensitive fields have no generalized automatic consent mechanism.
 - Saved exact question patterns currently have one host scope per pattern; learning the same label on another host can replace its earlier mapping. Canonical profile fields remain available. Revisit this schema for broader mapping libraries.
 - Record-specific remembered answers can become outdated when the underlying history changes; review before reuse. Comprehensive conflict resolution and per-field reuse policies remain incomplete.
-- Multi-profile isolation, credential encryption/keychain onboarding, packaging, general RAG and measured specialist-agent orchestration remain future work. The existing browser task journal is not evidence of a completed multi-agent platform.
+- Multi-profile isolation, credential encryption/keychain onboarding, packaging, semantic/vector retrieval and measured specialist-agent orchestration remain future work. Current retrieval is lexical search over human-approved answers. The existing browser task journal is not evidence of a completed multi-agent platform.
 
 ## Reproduce
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Technical capability registry. Recognition never grants permission from a website."""
 from urllib.parse import urlsplit
 import re

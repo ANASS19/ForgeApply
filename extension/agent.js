@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+// SPDX-License-Identifier: Apache-2.0
 // Short-horizon executor. Values come only from validated plans; models choose offered tool IDs.
 (() => {
   const runtime=globalThis.ForgeApplyAgent={running:false,control:'',run:null};
@@ -27,9 +29,11 @@
     if(tool)run.events.push({tool,label:String(label||'').slice(0,500),outcome});run.events=run.events.slice(-100);
     run.elapsed_ms=Math.min(3600000,Date.now()-runtime.started);
     const saved={run:{...run,url:safeURL(tab.url)},page_key:await pageKey(tab.url)};
-    await chrome.storage.local.set({agentCheckpoint:saved});show();
+    await chrome.storage.local.set({agentCheckpoint:saved});
     try{await send('agent_progress',{run:{...run,url:tab.url}});}
     catch(error){throw Object.assign(Error('Progress could not be saved: '+error.message),{code:error.code,operation:'save_progress'});}
+    // Do not advertise a completed/review state before its durable backend receipt.
+    show();
   }
   $('agentPause').onclick=()=>{runtime.control='pause';$('agentGoal').textContent='Pausing after the current verified action...';};
   $('agentStop').onclick=()=>{runtime.control='stop';$('agentGoal').textContent='Stopping after the current action. Your entries stay on the page.';};
@@ -52,9 +56,16 @@
         if(new URL(snapshot.url).origin!==origin)throw Error('The destination origin changed. Authorize and review the new page before continuing.');
         if(snapshot.final_review){await checkpoint('review_ready','final_review','Final review reached. Submit manually only if you choose.','human_review');return;}
         if(snapshot.needs_login||snapshot.site_error||snapshot.truncated_controls){await checkpoint('human_review','request_input',snapshot.needs_login?'Sign in manually':snapshot.site_error?'The website reports a page/server error':'Page inspection limit reached','human_review');return;}
-        const firstPage=!plannedPages.has(snapshot.url);plannedPages.add(snapshot.url);
-        const useAI=$('aiMode').checked&&firstPage&&runtime.run.model_calls<3;
-        runtime.operation='prepare';await prepare(useAI);if(plan.model_called)runtime.run.model_calls++;
+        const pageStage=JSON.stringify([snapshot.url,snapshot.stage,snapshot.fields.map(f=>[f.label,f.name,f.type,f.section,f.record_index])]);
+        let useAI=false;
+        runtime.operation='prepare';await prepare(false);
+        // Fill verified facts before model latency. SPA steps share a URL, so the
+        // unfamiliar-question fallback is tracked per form structure and stage.
+        if(!plan.actions.length&&!plan.structure_actions.length&&!plannedPages.has(pageStage)){
+          plannedPages.add(pageStage);
+          useAI=$('aiMode').checked&&runtime.run.model_calls<3;
+          if(useAI){await prepare(true);if(plan.model_called)runtime.run.model_calls++;}
+        }
         let candidates=[],actionIndices=[];
         if(plan.structure_actions.length)candidates=[{id:0,tool:'add_record',label:'Add one verified '+plan.structure_actions[0].section+' record'}];
         else candidates=plan.actions.map((a,id)=>{const field=snapshot.fields.find(f=>f.token===a.token);return {id,tool:'fill',label:[field?.section?field.section+' '+(field.record_index+1):'',field?.label].filter(Boolean).join(' → ')};}).filter(c=>!deferred.has(snapshot.url+'|'+c.label)).slice(0,5).map((c,id)=>{actionIndices[id]=c.id;return {...c,id};});
@@ -66,7 +77,7 @@
           candidates=[{id:0,tool:'advance_step',label:snapshot.navigation[0].name}];
         }
         runtime.operation='choose_action';const decision=await send('agent_decision',{tabId:target,url:snapshot.url,stage:snapshot.stage,candidates,
-          use_ai:useAI&&candidates.length>1&&runtime.run.model_calls<3,use_vision:$('visionMode').checked});
+          use_ai:$('aiMode').checked&&(useAI||$('visionMode').checked)&&candidates.length>1&&runtime.run.model_calls<3,use_vision:$('visionMode').checked});
         if(decision.source==='model')runtime.run.model_calls++;
         const chosen=candidates.find(c=>c.id===decision.candidate_id);if(!chosen)throw Error('Planner selected an unavailable tool.');
         await checkpoint('running',chosen.tool,chosen.label,'started');runtime.run.steps++;

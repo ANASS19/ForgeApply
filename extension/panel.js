@@ -1,10 +1,12 @@
+// SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+// SPDX-License-Identifier: Apache-2.0
 const $=id=>document.getElementById(id);
 let tabId=null,tab=null,snapshot=null,plan=null,busy=false,paired=false,targetWindowId=null,pendingTab=null;
-let documentKind='letter';
+let documentKind='letter',documentURL='',documentJobKey='';
 const edits=new Map();
 async function send(type,data={}) {
   const result=await chrome.runtime.sendMessage({type,...data});
-  if(type==='status'&&result?.ok&&result.worker_version!=='0.4.3')throw Object.assign(Error('Click Reload assistant below, then reopen ForgeApply. Your pairing will stay saved.'),{code:'extension_update_required'});
+  if(type==='status'&&result?.ok&&result.worker_version!=='0.4.4')throw Object.assign(Error('Click Reload assistant below, then reopen ForgeApply. Your pairing will stay saved.'),{code:'extension_update_required'});
   if(!result?.ok){
     const detail=result?.error==='Unknown extension request'?'Reload ForgeApply at chrome://extensions, then reopen this panel. The background worker is an older version.':result?.error||'Reopen the extension to reconnect.';
     throw Object.assign(Error(detail),{code:result?.error_code});
@@ -20,13 +22,15 @@ function actions() {
   $('applyReviewed').disabled=!paired||!plan?.drafts?.length;
   $('chooseFile').disabled=!snapshot?.fields.some(f=>f.type==='file');
   $('next').disabled=snapshot?.navigation.length!==1;
+  $('attachPDF').disabled=!paired||!snapshot?.fields.some(f=>f.type==='file')||documentURL!==tab?.url;
 }
 function button(id,handler) {
-  $(id).addEventListener('click',async()=>{
+  $(id).addEventListener('click',()=>perform(handler));
+}
+async function perform(handler){
     if(busy)return;busy=true;actions();$('error').textContent='';
     try{await handler();}catch(error){$('summary').textContent='Action stopped. Your page entries were preserved.';$('error').textContent=error.message;if(error.code==='pair_required'){paired=false;$('pairSetup').hidden=false;}if(error.code==='extension_update_required')$('reloadAssistant').hidden=false;}
     finally{busy=false;actions();if(pendingTab!==null){const id=pendingTab;pendingTab=null;await current(id);}}
-  });
 }
 function reset() {
   snapshot=null;plan=null;edits.clear();$('fields').textContent='';
@@ -42,10 +46,11 @@ async function status() {
   const {pairToken}=await chrome.storage.local.get('pairToken');$('pairSetup').hidden=!!pairToken;
   try {
     const state=await send('status');paired=true;$('pairSetup').hidden=true;
-    if(state.bridge_version!=='0.4.3')throw Object.assign(Error('Restart the local ForgeApply backend to load the matching version. Your pairing stays saved.'),{code:'backend_update_required'});
+    if(state.bridge_version!=='0.4.4')throw Object.assign(Error('Restart the local ForgeApply backend to load the matching version. Your pairing stays saved.'),{code:'backend_update_required'});
     $('connection').textContent='Connected locally | '+state.model;
     $('documents').textContent=Object.entries(state.documents).map(([lang,d])=>lang.toUpperCase()+': '+(d.available?d.filename:'not configured')).join(' | ');
     $('pairCode').value='';
+    if($('advanced').open)await models();
   } catch(error) {
     paired=false;$('connection').textContent=error.code==='offline'?'Backend offline - connection saved':error.code?.endsWith('update_required')?'Update required':'Connect ForgeApply';
     if(error.code==='pair_required')$('pairSetup').hidden=false;
@@ -81,7 +86,8 @@ function adopt(state,importJob=false) {
 }
 const questionKey=d=>[d.index,d.label].join('|');
 function captureEdits() {
-  for(const area of $('draftAnswers').querySelectorAll('textarea,select,input'))edits.set(area.dataset.key,area.value);
+  for(const area of $('draftAnswers').querySelectorAll('textarea,select,input'))
+    if(edits.has(area.dataset.key)||area.value!==area.dataset.initialValue)edits.set(area.dataset.key,area.value);
 }
 function renderPlan() {
   const cards=(plan.drafts||[]).map(d=>{
@@ -94,10 +100,17 @@ function renderPlan() {
     area.dataset.index=d.index;area.dataset.key=questionKey(d);
     area.setAttribute('aria-label',d.label||'Answer');
     area.value=edits.has(area.dataset.key)?edits.get(area.dataset.key):d.value;
+    area.dataset.initialValue=area.value;
     area.placeholder='Enter your verified answer / Inserisci una risposta verificata';
     area.addEventListener('input',()=>edits.set(area.dataset.key,area.value));label.append(area);card.append(label);
-    const hint=document.createElement('small');hint.textContent=d.kind==='selection_unresolved'?'Saved fact: '+d.known_value+'. Choose the corresponding website option; no equivalence was assumed.':d.kind==='record_unresolved'?'This populated row could not be safely matched to a saved record. Check its identity on the page.':d.source==='user_input'?'Missing fact: your answer is needed.':d.source==='verified_fact_template'?'Draft from verified profile facts - review before filling.':'AI draft - verify every claim.';card.append(hint);
+    const hint=document.createElement('small');hint.textContent=d.kind==='selection_unresolved'?'Saved fact: '+d.known_value+'. Choose the corresponding website option; no equivalence was assumed.':d.kind==='record_unresolved'?'This populated row could not be safely matched to a saved record. Check its identity on the page.':d.source==='user_input'?'Missing fact: your answer is needed.':d.source==='user:approved-answer'?'Previously approved answer for review.':d.source==='verified_fact_template'?'Draft from verified profile facts - review before filling.':'AI draft - verify every claim.';card.append(hint);
     if(d.facts_used?.length){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Supporting facts';details.append(summary);for(const fact of d.facts_used){const p=document.createElement('p');p.textContent=fact.text||JSON.stringify(fact.value);details.append(p);}card.append(details);}
+    const controls=document.createElement('div');controls.className='answerActions';
+    const approve=document.createElement('button');approve.textContent='Approve & fill';approve.disabled=busy;
+    approve.addEventListener('click',()=>perform(()=>fillReviewed([d])));
+    const edit=document.createElement('button');edit.className='secondary';edit.textContent='Reject & edit';edit.disabled=busy;
+    edit.addEventListener('click',()=>{area.value='';edits.set(area.dataset.key,'');area.focus();});
+    controls.append(approve,edit);card.append(controls);
     return {card,optional:d.optional};
   });
   const required=cards.filter(c=>!c.optional).map(c=>c.card),optional=cards.filter(c=>c.optional).map(c=>c.card);
@@ -136,19 +149,21 @@ button('analyze',async()=>{captureEdits();adopt(await send('inspect',{tabId}),tr
 button('fill',async()=>{
   $('summary').textContent='Preparing your answers...';captureEdits();adopt(await send('inspect',{tabId}),true);
   if(snapshot.needs_login){$('summary').textContent='Sign in on the page first, then use Prepare & Fill. Passwords stay manual.';return;}
-  const prepared=await prepare($('aiMode').checked);
-  for(const d of prepared.drafts||[])if(!edits.has(questionKey(d)))edits.set(questionKey(d),d.value);
-  await fillPlan(prepared);
+  await fillPlan(await prepare(false));
+  if($('aiMode').checked)await prepare(true);
 });
-button('applyReviewed',async()=>{
-  captureEdits();const answers=(plan?.drafts||[]).map(d=>{
-    const value=edits.get(questionKey(d))?.trim()||'';
+async function fillReviewed(drafts=plan?.drafts||[]){
+  captureEdits();const answers=drafts.map(d=>{
+    const value=(edits.has(questionKey(d))?edits.get(questionKey(d)):d.value)?.trim()||'';
     return {index:d.index,token:d.token,value,fact_id:d.fact_id&&value===d.value.trim()?d.fact_id:null,
-            remember:$('rememberAnswers').checked&&(['missing_fact','missing_choice'].includes(d.kind)||!!d.fact_id)};
+            remember:$('rememberAnswers').checked};
   }).filter(a=>a.value);
   if(!answers.length)throw Error('Enter at least one verified answer first.');
-  await fillPlan(await send('reviewed',{tabId,snapshot,answers}));
-});
+  const prepared=await send('reviewed',{tabId,snapshot,answers});
+  await fillPlan(prepared);
+  if(prepared.remembered)$('summary').textContent+=` ${prepared.remembered} approved ${prepared.remembered===1?'answer':'answers'} saved locally.`;
+}
+button('applyReviewed',()=>fillReviewed());
 button('chooseFile',async()=>{
   captureEdits();const result=await send('choose_file',{tabId,token:$('fileTarget').value,snapshot_id:snapshot.snapshot_id,site_authorized:true});
   adopt(result.snapshot);await prepare(false);$('summary').textContent=result.message;
@@ -159,13 +174,18 @@ button('next',async()=>{
   $('summary').textContent=result.transition_verified?'Next step opened. Use Prepare & Fill to continue.':'Check the page for validation errors, then try again.';
 });
 async function createDocument(kind) {
+  const context=job(),requestURL=tab.url;
   const lang=$('language').value==='auto'?(snapshot?.page_language?.toLowerCase().startsWith('it')?'it':'en'):$('language').value;
   $('summary').textContent='Preparing your document...';
-  const draft=await send(kind,{letter:{language:lang,job_title:job().title,company:job().company,description:job().description.slice(0,6000),use_ai:$('aiMode').checked}});
+  const draft=await send(kind,{letter:{language:lang,job_title:context.title,company:context.company,description:context.description.slice(0,6000),use_ai:$('aiMode').checked}});
+  if(tab.url!==requestURL)throw Error('The vacancy changed while drafting. Prepare the document for the current role.');
   documentKind=kind==='cv'?'cv':'letter';$('letterText').maxLength=30000;
+  documentURL=requestURL;documentJobKey=JSON.stringify([requestURL,context.title,context.company,context.description]);
+  $('documentRole').textContent=[context.title,context.company].filter(Boolean).join(' · ')||'Current application';
   $('letterArea').hidden=false;$('letterHeading').textContent=kind==='cv'?'Curriculum Vitae':draft.language==='it'?'Lettera di motivazione':'Motivation letter';$('letterText').value=draft.value;
   $('summary').textContent=draft.source==='model_proposal'?'AI draft ready. Review every claim before exporting.':'Verified-fact draft ready for review.';
-  if(draft.ai_error)$('error').textContent='AI unavailable; the factual draft is still ready.';
+  if(draft.ai_error)$('error').textContent='AI refinement failed: '+draft.ai_error+' The factual draft is still ready.';
+  actions();
 }
 button('letter',()=>createDocument('letter'));
 button('cv',()=>createDocument('cv'));
@@ -179,13 +199,22 @@ button('downloadPDF',async()=>{
   const result=await send('document_pdf',{document:{text:$('letterText').value,kind:documentKind,reviewed:true}});
   download(new Blob([Uint8Array.from(atob(result.base64),c=>c.charCodeAt(0))],{type:'application/pdf'}),result.filename);
 });
+button('attachPDF',async()=>{
+  const context=job();
+  if(tab?.url!==documentURL||documentJobKey!==JSON.stringify([tab?.url,context.title,context.company,context.description]))throw Error('The application changed. Generate and review a document for the current role.');
+  const result=await send('attach_document',{tabId,url:documentURL,token:$('fileTarget').value,snapshot_id:snapshot.snapshot_id,reviewed:true,
+    document:{text:$('letterText').value,kind:documentKind,reviewed:true}});
+  adopt(result.snapshot);await prepare(false);$('summary').textContent=result.message;
+});
 button('saveJob',async()=>{const result=await send('save_job',{job:job()});$('summary').textContent=`Job ${result.id}: ${result.created?'saved':'already tracked'}`;});
 button('match',async()=>{$('matchResult').textContent=JSON.stringify(await send('match',{job:job()}),null,2);});
 button('manualAnswer',async()=>{$('manualAnswerResult').textContent=JSON.stringify(await send('manual_answer',{question:$('manualQuestion').value}),null,2);});
 async function models() {
-  try{const inventory=await send('models');$('localModel').replaceChildren(...[...new Set([inventory.selected,...inventory.models])].map(name=>{const option=document.createElement('option');option.value=name;option.textContent=name+(inventory.models.includes(name)?'':' (not installed)');return option;}));$('localModel').value=inventory.selected;}catch(error){$('error').textContent=error.message;}
+  try{const inventory=await send('models');$('localModel').replaceChildren(...[...new Set([inventory.selected,...inventory.models])].map(name=>{const option=document.createElement('option');option.value=name;option.textContent=name+(inventory.models.includes(name)?'':' (not installed)');option.disabled=!inventory.models.includes(name);return option;}));$('localModel').value=inventory.selected;$('modelResult').textContent=inventory.available?'Choose a model, then Use selected model. Test current model checks JSON without personal data.':'Ollama is unavailable. Start Ollama, then refresh models.';}catch(error){$('error').textContent=error.message;}
 }
-button('useModel',async()=>{await send('choose_model',{model:$('localModel').value});await status();});
+button('useModel',async()=>{const selected=await send('choose_model',{model:$('localModel').value});await status();$('modelResult').textContent='Selected '+selected.model+'. Context and output settings were preserved. Use Test current model to verify inference.';});
+button('refreshModels',models);
+button('testModel',async()=>{$('modelResult').textContent='Testing the current model with synthetic data...';const result=await send('test_model');$('modelResult').textContent=(result.ok?'Passed: ':'Failed: ')+(result.model||'')+' — '+result.detail;});
 $('settingsToggle').addEventListener('click',()=>{$('advanced').open=!$('advanced').open;});
 $('advanced').addEventListener('toggle',async()=>{if($('advanced').open&&paired){await models();try{$('activity').textContent=(await send('activity')).map(e=>e.action+': '+e.detail).join('\n');}catch(error){$('error').textContent=error.message;}}});
 $('language').addEventListener('change',async()=>{edits.clear();await chrome.storage.local.set({answerLanguage:$('language').value});if(snapshot&&!busy){busy=true;actions();try{await prepare(false);}catch(error){$('error').textContent=error.message;}finally{busy=false;actions();}}});

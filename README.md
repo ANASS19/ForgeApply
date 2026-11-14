@@ -1,6 +1,6 @@
 <div align="center">
 
-![ForgeApply - local-first AI application harness](docs/assets/banner.svg?v=20261114-harness-2)
+![ForgeApply - local-first AI application harness](docs/assets/banner.svg?v=20261114-harness-3)
 
 ### Your career facts. Your models. A browser workflow you control.
 
@@ -21,8 +21,6 @@
 Set up your profile once. Retrieve relevant approved answers, fill supported forms, review unfamiliar questions, and keep an inspectable record of browser actions. Bring your preferred local runtime or hosted model API.
 
 Created and maintained by **[Anass Nassiri (ANASS19)](https://github.com/ANASS19)**, part of the Forge AI project family.
-
-**Publication status:** the 0.4.4 implementation is being prepared for the next code push. This README describes that preview; the published release remains 0.4.3.
 
 **Development preview:** tested with real Chromium against controlled forms. Live employer completion, every ATS variant, and production reliability are not guaranteed. Final submission stays under your control. [Read the evidence and release gaps](RELEASE_READINESS.md).
 
@@ -96,7 +94,7 @@ Model and provider setup belongs in the [configuration guide](docs/USAGE.md#conf
 
 Data is stored outside the repository under `%USERPROFILE%\.forgeapply` by default. The server binds to loopback; extension pairing is authenticated. No telemetry is implemented. SQLite, CVs and browser sessions rely on OS permissions and are **not application-encrypted**. Hosted inference can receive candidate facts and page content after opt-in; keep it off for local-only inference.
 
-**152 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, virtualized Workday-style catalogs, an Italian enterprise portal, partial-record recovery, pause/resume, replaced controls, ambiguous choices, page errors and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works. See the [regression evidence](docs/WORKDAY_VERIFICATION.md).
+**152 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, virtualized Workday-style catalogs, enterprise portals, partial-record recovery, pause/resume, replaced controls, ambiguous choices, page errors and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works. See the [regression evidence](docs/WORKDAY_VERIFICATION.md).
 
 ```powershell
 .venv\Scripts\python.exe -m pytest -q

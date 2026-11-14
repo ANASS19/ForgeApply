@@ -90,7 +90,19 @@ def test_real_agent_catalog_pause_resume_upload_and_final_review(tmp_path,extens
             expect(page.locator('[name=motivation]')).to_have_value(re.compile('^Dear Hiring Team' if language=='en' else '^Gentile team'))
             panel.locator('#runAgent').click();expect(page.locator('[name=privacy]')).to_be_visible(timeout=15000)
             expect(panel.locator('#agentGoal')).to_contain_text('human review');expect(page.locator('[name=privacy]')).not_to_be_checked()
+            # Hold the final receipt: a ready-looking UI must imply saved backend history.
+            panel.evaluate("""()=>{const realSend=send;globalThis.releaseFinalSave=null;
+              send=async(type,data={})=>{if(type==='agent_progress'&&data.run.status==='review_ready')
+                await new Promise(resolve=>globalThis.releaseFinalSave=resolve);return realSend(type,data);};}""")
             page.locator('[name=privacy]').check();panel.locator('#runAgent').click()
+            panel.evaluate("""async()=>{const deadline=Date.now()+15000;
+              while(typeof globalThis.releaseFinalSave!=='function'){
+                if(Date.now()>deadline)throw Error('Final progress checkpoint was not requested');
+                await new Promise(resolve=>setTimeout(resolve,20));
+              }}""")
+            expect(panel.locator('#agentGoal')).not_to_contain_text('review ready')
+            assert panel.evaluate("async()=> (await send('agent_history'))[0].status")=='running'
+            panel.evaluate('releaseFinalSave()')
             expect(panel.locator('#agentGoal')).to_contain_text('review ready',timeout=15000)
             history=panel.evaluate("async()=>await send('agent_history')")
             assert len(history)==1 and history[0]['id']==checkpoint['run']['id']

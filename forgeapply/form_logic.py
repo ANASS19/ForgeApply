@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Shared deterministic fact mapping for managed browser and extension preparation."""
 import re
 import unicodedata
@@ -12,7 +14,8 @@ SENSITIVE_QUESTION=re.compile(
     r'salary|compensation|hourly rate|daily rate|notice period|availability|start date|immediately|citizenship|nationality|reasonable accommodation|'
     r'autorizz.*lavor|diritto.*lavor|visto|sponsoriz|retribuz|stipendio|salario|compenso|remuneraz|tariffa|\bral\b|preavviso|categorie protette|'
     r'disponibilit|disponibile.*(?:lavor|trasfer)|relocation|data di inizio|dichiar|consenso|accetto|acconsento|trattamento.*dati|disabilit|penal|condann|'
-    r'cittadinanza|nazionalit|genere|sesso|etni|religio|orientation|orientamento|passport|social security|\bssn\b|tax id|codice fiscale|carta.*identit|documento.*identit|\biban\b|bank account',re.I)
+    r'cittadinanza|nazionalit|genere|sesso|\bsex\b|etni|religio|orientation|orientamento|passport|social security|\bssn\b|tax id|codice fiscale|carta.*identit|documento.*identit|\biban\b|bank account|'
+    r'credit[ _-]?card|\bcard (?:verification|user name|issuing|customer|expiration)|\bcvc\b|\bcvv\b|driver.?s? licen[cs]e|\bincome\b',re.I)
 
 REQUIRED_MARKER=re.compile(r'(?:\s*[*＊]+\s*(?:(?:campo\s+)?(?:obbligatori[oa]|required|mandatory|obligatoire))?|\s*[\[(]\s*(?:campo\s+)?(?:obbligatori[oa]|required|mandatory|obligatoire)\s*[\])])\s*[:.]*\s*$',re.I)
 
@@ -56,9 +59,9 @@ def _known_text_answer(field:dict,profile:dict,answers:list[dict],context:dict|N
     patterns={
         'first_name':r'first[ _-]?name|given name(?:\(s\))?|nome', 'last_name':r'last[ _-]?name|family name|surname|cognome',
         'email':r'e[ _-]?mail(?: address)?|indirizzo email',
-        'phone':r'(?:phone|mobile|telephone|telefono|cellulare)(?: number)?|numero (?:di )?(?:telefono|cellulare)',
+        'phone':r'(?:phone|mobile|telephone|telefono|cellulare|cell phone)(?: number)?|numero (?:di )?(?:telefono|cellulare)',
         'linkedin':r'linkedin(?: (?:url|profile))?|(?:profilo|link) linkedin|social (?:network url|profile(?: url)?)', 'github':r'github(?: (?:url|profile))?|(?:profilo|link) github',
-        'portfolio':r'portfolio(?: personale)?|(?:personal )?website|sito web(?: personale)?',
+        'portfolio':r'portfolio(?: personale)?|(?:personal )?web\s?site|sito web(?: personale)?',
         'city':r'(?:current )?(?:city|location)|(?:città|comune)(?: di residenza)?',
         'country':r'(?:current )?country(?: of residence)?|country\s*/\s*territory|(?:paese|nazione)(?: di residenza)?',
         'current_title':r'current (?:job )?title|qualifica professionale|titolo professionale',

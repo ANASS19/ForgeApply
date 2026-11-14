@@ -1,7 +1,9 @@
+// SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+// SPDX-License-Identifier: Apache-2.0
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let allJobs=[]; let browserSnapshotId=null;
-const subtitles={dashboard:'Your application activity, all in one place.',jobs:'Prioritized jobs with duplicate protection and auditable statuses.',browser:'Real local browser, deterministic filling, optional LLM/vision fallback.',profile:'The facts and documents used for applications.',answers:'Reusable, verified answers to screening questions.',sources:'Bulk discovery without clicking each job.',settings:'Local Ollama or hosted API inference.'};
+const subtitles={dashboard:'Grounded memory. Reviewed answers. Verified browser actions.',jobs:'Prioritized jobs with duplicate protection and auditable statuses.',browser:'Real local browser, deterministic filling, optional LLM/vision fallback.',profile:'The facts and documents used for applications.',answers:'Reusable, verified answers to screening questions.',sources:'Bulk discovery without clicking each job.',settings:'Configure your model provider and inference settings.'};
 function alertMsg(message, bad=false){const e=$('notice');e.hidden=false;e.textContent=message;e.className=bad?'error':'success';clearTimeout(window._toast);window._toast=setTimeout(()=>e.hidden=true,9000)}
 async function api(path,options={}){try{const r=await fetch('/api'+path,options);const data=await r.json().catch(()=>({detail:'Unexpected response'}));if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));return data}catch(e){alertMsg(e.message,true);throw e}}
 function post(path,body){return api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
@@ -26,8 +28,9 @@ $('boardForm').onsubmit=async e=>{e.preventDefault();await post('/boards',formDa
 async function removeBoard(ats,slug){await api(`/boards/${encodeURIComponent(ats)}/${encodeURIComponent(slug)}`,{method:'DELETE'});loadBoards()}
 async function syncBoards(){alertMsg('Reading public boards...');const r=await post('/discover',{});alertMsg(`Discovery complete: ${r.added} added, ${r.updated} updated, ${r.errors.length} errors. ${r.errors.slice(0,2).join(' ')}`)}
 async function importCSV(){const f=$('csvFile').files?.[0];if(!f){alertMsg('Choose a CSV file',true);return}const fd=new FormData();fd.append('file',f);const r=await api('/import',{method:'POST',body:fd});alertMsg(`Imported ${r.added} new jobs and matched ${r.updated} existing.`)}
-async function loadSettings(){const d=await api('/llm');for(const [k,v]of Object.entries(d)){const el=$('llmForm').elements.namedItem(k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v}}}
-$('llmForm').onsubmit=async e=>{e.preventDefault();await put('/llm',{...formData(e.target),allow_remote:e.target.elements.allow_remote.checked,think:e.target.elements.think.checked});alertMsg('Model settings saved')};
+async function loadSettings(){const d=await api('/llm');for(const [k,v]of Object.entries(d)){const el=$('llmForm').elements.namedItem(k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v}}providerHint();await loadProviderModels(d.provider).catch(()=>{});}
+function inferenceSettings(){const f=$('llmForm');return {...formData(f),allow_remote:f.elements.allow_remote.checked,think:f.elements.think.checked};}
+$('llmForm').onsubmit=async e=>{e.preventDefault();await put('/llm',inferenceSettings());alertMsg('Model settings saved')};
 async function navigateBrowser(){alertMsg('Opening visible Chromium browser...');const r=await post('/browser/open',{url:$('browserUrl').value});renderBrowser(r);alertMsg('Browser opened')}
 async function snapshotBrowser(){renderBrowser(await api('/browser/state'))}
 function renderBrowser(state){browserSnapshotId=state.snapshot_id;$('browserUrl').value=state.url||$('browserUrl').value;$('browserMeta').textContent=state.title||'';$('browserText').textContent=(state.text||'').slice(0,4500);$('browserFields').innerHTML=(state.fields||[]).map(f=>`<div class="fieldrow"><small>#${f.index} · ${esc(f.tag)} / ${esc(f.type)}</small><strong>${esc(f.label||f.name||f.id||'Unlabelled field')}</strong><div class="buttons compact"><input id="field_${f.index}" value="${esc(['checkbox','radio'].includes(f.type)?String(f.checked):f.value)}" placeholder="Enter response"/><button class="small" onclick="manualFill(${f.index})">Fill</button></div></div>`).join('')||'<p class="muted">No visible fields found</p>'}
@@ -43,7 +46,31 @@ async function manualSubmitted(){const id=Number($('submitJobId').value);if(!id)
 loadDashboard();
 
 async function cancelAgent(){await post('/browser/agent/cancel',{});alertMsg('Pause requested; inspect the browser before resuming.')}
-async function checkProvider(){const r=await post('/llm/health',{});$('providerHealth').textContent=JSON.stringify(r,null,2)}
+async function checkProvider(){const r=await post('/llm/health',{});$('providerHealth').textContent=JSON.stringify(r,null,2);modelOptions(r.models||[]);if(r.model_details&&!providerModels.some(m=>m.id===r.model_details.id))providerModels.push(r.model_details);modelHint();}
+async function testProvider(){$('providerHealth').textContent='Testing saved model with synthetic data...';const r=await post('/llm/test',{});$('providerHealth').textContent=JSON.stringify(r,null,2)}
+function modelOptions(names){$('availableModels').replaceChildren(...names.map(name=>{const option=document.createElement('option');option.value=name;return option;}));}
+let providerModels=[];
+const providerDefaults={ollama:{base:'http://127.0.0.1:11434',key:''},openai:{base:'https://api.openai.com/v1',key:'OPENAI_API_KEY'},anthropic:{base:'https://api.anthropic.com/v1',key:'ANTHROPIC_API_KEY'},deepseek:{base:'https://api.deepseek.com',key:'DEEPSEEK_API_KEY'},openrouter:{base:'https://openrouter.ai/api/v1',key:'OPENROUTER_API_KEY'}};
+function providerHint(){const provider=$('llmForm').elements.provider.value,defaults=providerDefaults[provider];$('sessionApiKey').value='';$('sessionKeyStatus').textContent='Keys entered here stay only in backend process memory. Re-enter after restarting ForgeApply.';$('providerKeySetup').hidden=provider==='ollama';$('providerSetup').textContent=provider==='ollama'?'Choose any installed model. No API key is needed.':provider==='openrouter'?'Choose or paste an exact OpenRouter model ID (including :free where applicable). Enter your key below, or set OPENROUTER_API_KEY before startup. Enable remote inference, Save, then Test. Enabled inference sends data through OpenRouter to the routed model provider. Loading the public catalog sends no candidate data.':'Enter your key below or set '+defaults.key+' before startup. Enter your model ID, enable remote inference, then Save and Test. Custom compatible endpoints can use their own *_API_KEY variable.';}
+function modelHint(){const model=$('llmForm').elements.model.value,details=providerModels.find(m=>m.id===model);$('modelCapabilities').textContent=!details?'':(details.input_modalities.includes('image')?'Image input advertised. ':'Text input; use an image-capable model for screenshots. ')+(details.supported_parameters.includes('structured_outputs')?'JSON schema advertised.':details.supported_parameters.includes('response_format')?'JSON mode advertised.':'JSON validated by ForgeApply; native JSON mode is not advertised.')+' Use Test saved model to verify inference.';}
+async function loadProviderModels(provider=$('llmForm').elements.provider.value){
+  if(!['ollama','openrouter'].includes(provider))return;
+  const inventory=await api(provider==='openrouter'?'/llm/openrouter-models':'/llm/local-models');
+  if($('llmForm').elements.provider.value!==provider)return;
+  providerModels=inventory.model_details||[];modelOptions(inventory.models||[]);modelHint();
+}
+$('llmForm').elements.model.addEventListener('input',modelHint);
+$('refreshProviderModels').addEventListener('click',()=>loadProviderModels().catch(()=>{}));
+$('useSessionKey').addEventListener('click',async()=>{
+  const form=$('llmForm'),input=$('sessionApiKey'),button=$('useSessionKey');
+  if(!form.reportValidity())return;
+  if(!input.value.trim()){$('sessionKeyStatus').textContent='Enter the key in the masked field first.';return;}
+  const settings=inferenceSettings();button.disabled=true;
+  try{await put('/llm',settings);const result=await post('/llm/session-key',{provider:settings.provider,base_url:settings.base_url,api_key_env:settings.api_key_env,key:input.value});input.value='';$('sessionKeyStatus').textContent='Key configured in '+result.api_key_env+' for this backend session. Run Test saved model. Re-enter after a backend restart.';alertMsg('Provider saved; session key configured');}
+  catch{$('sessionKeyStatus').textContent='The key could not be configured. Check the provider settings and try again.';}
+  finally{button.disabled=false;}
+});
+$('llmForm').elements.provider.addEventListener('change',()=>{const f=$('llmForm'),provider=f.elements.provider.value,defaults=providerDefaults[provider];f.elements.base_url.value=defaults.base;f.elements.api_key_env.value=defaults.key;f.elements.model.value='';f.elements.allow_remote.checked=false;$('inferencePreset').value='';providerModels=[];modelOptions([]);modelHint();providerHint();loadProviderModels(provider).catch(()=>{});});
 async function inspectAccessibility(){const r=await post('/browser/tool',{action:'accessibility'});$('agentTrace').textContent=r.frames.map(f=>`Frame ${f.index}\n${f.tree}`).join('\n')}
 async function scrollBrowser(){renderBrowser(await post('/browser/tool',{action:'scroll',direction:'down'}))}
 
@@ -52,7 +79,7 @@ async function approveDestination(){const id=Number($('submitJobId').value);if(!
 async function extensionPairCode(){const r=await post('/extension/pairing-code',{});$('extensionPairCode').textContent=r.code+' (expires in 5 minutes)';await extensionSessions()}
 async function extensionSessions(){const rows=await api('/extension/sessions');$('extensionSessions').replaceChildren(...rows.map(row=>{const e=document.createElement('div');e.className='miniJob';const label=document.createElement('small');label.textContent=row.extension_id;const b=document.createElement('button');b.textContent='Revoke';b.onclick=async()=>{await api('/extension/sessions/'+row.extension_id,{method:'DELETE'});extensionSessions()};e.append(label,b);return e}))}
 
-$('inferencePreset').onchange=e=>{if(!e.target.value)return;const f=$('llmForm');f.elements.provider.value='ollama';f.elements.model.value=e.target.value;f.elements.num_ctx.value=8192;f.elements.num_predict.value=768;f.elements.temperature.value=0;f.elements.think.checked=false;alertMsg('Preset selected. Save model settings to apply; human review remains required.')}
+$('inferencePreset').onchange=e=>{if(!e.target.value)return;const f=$('llmForm');f.elements.provider.value='ollama';f.elements.base_url.value=providerDefaults.ollama.base;f.elements.api_key_env.value='';f.elements.allow_remote.checked=false;f.elements.model.value=e.target.value;f.elements.num_ctx.value=8192;f.elements.num_predict.value=768;f.elements.temperature.value=0;f.elements.think.checked=false;providerModels=[];modelHint();providerHint();loadProviderModels('ollama').catch(()=>{});alertMsg('Preset selected. Save model settings to apply; human review remains required.')}
 
 async function previewDocument(lang){const r=await api('/resumes/'+lang+'/text');$('documentPreview').textContent=r.filename+'\n'+r.note+'\n\n'+r.text}
 

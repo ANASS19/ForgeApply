@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ForgeApply Local Assistant",
-  "version": "0.4.3",
-  "description": "User-triggered, local-first application preparation. Restricted native job platforms remain manual.",
+  "version": "0.4.4",
+  "description": "Local-first AI application harness with grounded memory, reviewed answers and browser automation.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel", "contextMenus"],
   "host_permissions": ["http://127.0.0.1/*"],

@@ -1,4 +1,6 @@
 @echo off
+REM SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+REM SPDX-License-Identifier: Apache-2.0
 cd /d "%~dp0"
 if not exist .venv\Scripts\python.exe (
  echo Installing ForgeApply dependencies in local virtual environment...

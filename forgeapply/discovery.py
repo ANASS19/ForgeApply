@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Fast read-only discovery via public company job-board APIs and CSV imports."""
 from __future__ import annotations
 import csv

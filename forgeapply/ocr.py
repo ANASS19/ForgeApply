@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Optional local OCR via an installed Tesseract executable, never a remote service."""
 from pathlib import Path
 import shutil

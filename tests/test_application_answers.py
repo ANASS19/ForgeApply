@@ -2,6 +2,27 @@ import pytest
 from forgeapply.application_answers import draft_answer,draft_resume,response_language,evidence_catalog
 
 
+def test_retrieval_uses_only_reviewed_relevant_current_facts():
+    from forgeapply.application_answers import retrieve_reviewed_answers
+    answers=[{'id':1,'pattern':'^Preferred programming stack$','answer':'Python','source':'user:extension-reviewed-exact'},
+             {'id':2,'pattern':'^Programming stack$','answer':'unreviewed','source':'model'},
+             {'id':3,'pattern':'^Visa programming$','answer':'Yes','source':'user:local-dashboard'},
+             {'id':4,'pattern':'^Programming email$','answer':'stale','fact_path':'profile.email','source':'user:local-dashboard'},
+             {'id':5,'pattern':'^Programming stack$','answer':'disabled','enabled':False,'source':'user:local-dashboard'},
+             {'id':6,'pattern':'^Favourite colour$','answer':'Blue','source':'user:local-dashboard'}]
+    found=retrieve_reviewed_answers([{'label':'Your programming stack?'}],answers,{'email':'current@example.test'})
+    assert {f['id'] for f in found}=={'reviewed_answer.1','reviewed_answer.4'}
+    assert 'stale' not in str(found) and 'current@example.test' in str(found)
+
+
+def test_resume_emphasizes_current_vacancy_skills_without_inventing():
+    first=draft_resume(PROFILE,CONTEXT,job_description='SQL and Python required; Rust helpful')
+    second=draft_resume(PROFILE,CONTEXT,job_description='Computer Vision role')
+    assert first['value'].index('SQL')<first['value'].index('PyTorch')
+    assert second['value'].index('Computer Vision')<second['value'].index('Python')
+    assert 'Rust' not in first['value'] and 'Unverified' not in second['value']
+
+
 PROFILE={'first_name':'Fixture','last_name':'Candidate','years_ai':'2','resume_en':'PRIVATE-PATH'}
 CONTEXT={'education':[{'level':'masters','degree':'Computer Science','institution':'Fixture University','completed':True}],
          'experience':[{'title':'Developer','employer':'Synthetic Company'},

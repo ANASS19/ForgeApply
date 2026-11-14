@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Anass Nassiri and contributors
+# SPDX-License-Identifier: Apache-2.0
 """Narrow authenticated MV3 bridge. No arbitrary local files or managed-browser commands."""
 import hashlib
 import base64
@@ -11,7 +13,7 @@ from fastapi import APIRouter,Depends,HTTPException,Request
 from pydantic import BaseModel,Field,ConfigDict
 from . import store,discovery
 from .form_logic import known_answer,SENSITIVE_QUESTION,normalize_label,required_label,matching_choice,bind_records,verified_records,record_question_key,sensitive_field,record_storage,verified_skills,record_data,record_fingerprint
-from .application_answers import draft_answer,draft_resume,response_language,needs_exact_fact,evidence_catalog,question_kind,application_specific_question
+from .application_answers import draft_answer,draft_resume,response_language,needs_exact_fact,evidence_catalog,question_kind,application_specific_question,retrieve_reviewed_answers
 from .site_policy import capabilities
 from .llm import DecisionModel,LLMError,DEFAULT_LOCAL_MODEL
 
@@ -108,7 +110,7 @@ def disconnect(identifier:str=Depends(authorized)):
 def status(identifier:str=Depends(authorized)):
     profile=store.get_setting('profile',{})
     settings=store.get_setting('llm',{})
-    return {'ok':True,'bridge_version':'0.4.3','extension_id':identifier,'model':settings.get('model',DEFAULT_LOCAL_MODEL),
+    return {'ok':True,'bridge_version':'0.4.4','extension_id':identifier,'model':settings.get('model',DEFAULT_LOCAL_MODEL),
             'profile_fields':sorted(k for k,v in profile.items() if v and not k.startswith('resume_')),
             'documents':{lang:{'available':bool(profile.get('resume_'+lang)),'filename':__import__('pathlib').Path(profile.get('resume_'+lang,'')).name}
                          for lang in ('en','it')}}
@@ -277,6 +279,8 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
             continue
         answered=(bool(item.value.strip()) and item.selection_confirmed is not False) if item.type not in ('checkbox','radio') else item.checked is True or item.group_answered
         answer=known_answer(field,profile,answers,context)
+        saved_draft=answer if answer and question_kind(item.label) and answer[1]=='saved_answer' else None
+        if saved_draft:answer=None
         if answer: actions.append({'token':item.token,'index':item.index,'value':answer[0],'source':answer[1]})
         elif inferred_required and (not item.valid or not answered):
             unknown.append(normalize_label(item.label) or item.name or str(item.index))
@@ -295,10 +299,11 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
                     choice_groups.add(group)
             review_choice=group in choice_groups
         if not answer and (not item.value or item.selection_confirmed is False) and not excluded:
-            fact=known_answer(field|{'options':[],'value':''},profile,answers,context)
+            fact=None if saved_draft else known_answer(field|{'options':[],'value':''},profile,answers,context)
             record_unresolved=item.section and context['_form_bindings'].get((item.section,item.record_index)) is None and bool(verified_records(context,item.section))
             draft=draft_answer(item.label,profile,context,language=value.language,page_language=value.page_language,
                                job_title=value.job_title,company=value.company,job_description=value.job_description)
+            if saved_draft:draft={'value':saved_draft[0],'kind':'approved_draft','source':'user:approved-answer','needs_review':True,'facts_used':[]}
             if fact or record_unresolved:
                 drafts.append({'index':item.index,'token':item.token,'label':display_label,'value':'',
                                'kind':'selection_unresolved' if fact else 'record_unresolved','known_value':fact[0] if fact else '',
@@ -339,7 +344,7 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
         config=store.get_setting('llm',{})
         try:
             model=DecisionModel.from_settings(config)
-            evidence=evidence_catalog(profile,context)
+            evidence=evidence_catalog(profile,context)+retrieve_reviewed_answers(unresolved,store.list_answers(),profile)
             result=model.propose_grounded_answers(unresolved,evidence,
                 language=response_language(page_language=value.page_language,preferred=value.language),page_text=value.page_text,allow_fact_references=True)
             proposals=[{'field_index':a['field_index'],'value':a['value'],'evidence_ids':a['evidence_ids'],'fact_id':a.get('fact_id'),'needs_review':True}
@@ -436,12 +441,14 @@ def reviewed_plan(value:ReviewedPlanIn,identifier:str=Depends(authorized)):
             remembered_value=semantic_value
             record.setdefault('form_answers',{})[record_question_key(label)]={'value':remembered_value,'source':'user:extension-reviewed-record','verified_at':store.now()}
             context_changed=True;remembered+=1
-        can_remember=bool(label) and not item.section and not question_kind(label) and not application_specific_question(label) and not re.search(r'why|perch[eé]|company|azienda|this (?:role|position)|quest[oa] (?:ruolo|posizione)',label,re.I)
-        if answer.remember and application_specific_question(label):
+        job_specific=question_kind(label)=='motivation' or application_specific_question(label) or bool(re.search(r'why|perch[eé]|company|azienda|this (?:role|position)|quest[oa] (?:ruolo|posizione)',label,re.I))
+        can_remember=bool(label) and not item.section and not job_specific
+        if answer.remember and job_specific:
             key=store.normalized_url(value.url);pattern='^'+re.escape(label)+'$'
             rows=[r for r in scoped.get(key,[]) if r['pattern']!=pattern]
             rows.append({'pattern':pattern,'answer':semantic_value,'enabled':True,'source':'user:reviewed-application-answer','verified_at':store.now()})
             scoped[key]=rows;scoped_changed=True
+            remembered+=1
         pattern='^'+re.escape(label)+'$'
         # A birth date/place is explicit personal data, never a reusable general screening answer.
         can_remember=can_remember and not re.search(r'birth|nascita',label,re.I)
@@ -485,14 +492,16 @@ def refine_document(draft:dict,value:LetterIn,kind:str) -> dict:
               'For a CV retain contact details, section headings and readable plain-text layout.',
               'baseline_document':draft['value']}
     try:
-        result=DecisionModel.from_settings(store.get_setting('llm',{})).propose_grounded_answers([question],evidence,
+        model=DecisionModel.from_settings(store.get_setting('llm',{}))
+        model.ollama_options['num_predict']=model.document_num_predict
+        result=model.propose_grounded_answers([question],evidence,
             language=value.language,page_text=' '.join((value.job_title,value.company,value.description)))
         answer=next((a for a in result['answers'] if a['field_index']==0 and a['value'].strip() and not a['needs_information']),None)
         if answer:
             return draft|{'value':answer['value'],'source':'model_proposal','facts_used':[e for e in evidence if e['id'] in answer['evidence_ids']],
                           'note':'AI wording requires review; evidence citations do not prove every claim.'}
     except (LLMError,ValueError) as exc:
-        return draft|{'ai_error':str(exc),'note':'AI unavailable; using the verified-fact draft.'}
+        return draft|{'ai_error':str(exc),'ai_error_code':getattr(exc,'code','model_error'),'note':'AI could not refine this draft; using verified facts.'}
     return draft
 
 
@@ -506,7 +515,8 @@ def motivation_letter(value:LetterIn,identifier:str=Depends(authorized)):
 
 @router.post('/cv-draft')
 def cv_draft(value:LetterIn,identifier:str=Depends(authorized)):
-    draft=draft_resume(store.get_setting('profile',{}),store.get_setting('candidate_context',{}),value.language)
+    draft=draft_resume(store.get_setting('profile',{}),store.get_setting('candidate_context',{}),value.language,
+                       job_description=value.job_title+' '+value.description)
     if not draft:raise HTTPException(400,'Add verified education, experience or skills before drafting a CV')
     return refine_document(draft,value,'CV')
 
@@ -548,6 +558,12 @@ def local_models(identifier:str=Depends(authorized)):
     return {'models':models,'selected':store.get_setting('llm',{}).get('model',DEFAULT_LOCAL_MODEL),'available':True}
 
 
+@router.post('/model-test')
+def test_selected_model(identifier:str=Depends(authorized)):
+    try:return DecisionModel.from_settings(store.get_setting('llm',{})).test_response()
+    except (LLMError,ValueError) as exc:return {'ok':False,'detail':str(exc),'code':getattr(exc,'code','configuration')}
+
+
 class LocalModelIn(BaseModel):
     model:str=Field(min_length=1,max_length=200)
 
@@ -560,8 +576,8 @@ def choose_local_model(value:LocalModelIn,identifier:str=Depends(authorized)):
     history=store.get_setting('llm_selection_history',[])
     history.append({'settings':previous,'at':store.now(),'source':'extension-user-selection'})
     store.set_setting('llm_selection_history',history[-20:])
-    store.set_setting('llm',previous|{'provider':'ollama','model':value.model,'base_url':local_ollama_endpoint(),
-                                     'allow_remote':False,'think':False,'num_ctx':8192,'num_predict':768,'temperature':0})
+    store.set_setting('llm',previous|{'provider':'ollama','model':value.model,'base_url':local_ollama_endpoint(),'api_key_env':'',
+                                     'allow_remote':False})
     return {'model':value.model,'source':'explicit-user-selection'}
 
 

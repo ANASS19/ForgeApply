@@ -1,5 +1,32 @@
 # Changelog
 
+## Open-source identity and licensing - 2026-11-14
+
+- Position ForgeApply as an open-source AI application harness with grounded RAG-style memory, reviewed browser automation and local/hosted model choice. Keep specialist multi-agent orchestration explicitly on the roadmap.
+- Add the canonical Apache-2.0 license, NOTICE attribution to creator Anass Nassiri (ANASS19), source SPDX notices and public project credits. Update the blue banner, dashboard and extension description without changing application approval gates.
+- Await backend checkpoint acknowledgement before displaying review/completed states. Cover delayed final saves in actual EN/IT Chromium runs.
+
+
+## OpenRouter integration - 2026-11-14
+
+- Add a native OpenRouter provider preset and anonymous public text-model catalog, including exact vendor/model and :free IDs. Advertised image/JSON capabilities guide requests; existing typed validation remains mandatory.
+- Support schema, JSON-object and prompt-only modes; retry an explicit format rejection once on the same model. Report credits, rate limits, permissions, missing endpoints and HTTP-200 error bodies without exposing provider details or switching to another paid model.
+- Add masked session-only API key entry for hosted providers, without a backend restart. Keys stay in process memory, outside SQLite and API responses; same-origin and provider/configuration guards apply.
+- Test browser dashboard setup, secure key handling, hosted request variants, and a grounded proposal-to-approved-fill Chromium flow. Live OpenRouter catalog checked; authenticated generation needs the user's key and was not called by development checks.
+
+Validation: 152 local tests passed (baseline 128), one existing dependency warning. Additional dashboard smoke loaded 471 live catalog entries and the pictured Gemma model without entering a key, saving settings or sending inference. JavaScript syntax, dependency, whitespace and redacted source secrets checks passed. Hosted generation remains mock-tested pending the user's key.
+
+## 0.4.4 - Form preparation, learned answers and provider compatibility - 2026-11-14
+
+- Fix password-only login detection blocking ordinary forms; recover adjacent plain-text labels without crossing ambiguous control groups. Add cell-phone and Web Site aliases; keep payment/identity controls manual.
+- Fill deterministic facts before model requests; give SPA stages their own bounded fallback. Preserve explicit edits while displaying new proposals. Add per-answer approve/reject/edit controls and retrieve relevant human-approved answers locally; scope role-specific responses to their application.
+- Tailor verified CV skill emphasis to the current vacancy, read structured vacancy descriptions, and attach reviewed CV/letter PDFs to explicitly selected upload controls. Protect existing files and changed vacancy contexts.
+- Preserve generation options when switching Ollama models; add refresh and synthetic model tests. Retry thinking-only empty structured responses once without format constraints and retain strict validation. Show specific inference failures.
+- Add direct Anthropic and DeepSeek presets alongside Ollama/OpenAI-compatible inference; isolate provider keys in environment variables. Hosted transports have mocked contract tests, not live paid-provider verification.
+
+
+Validation: 128 Windows Python 3.13 tests passed; five JavaScript syntax checks, dependency integrity and a redacted source secrets scan passed. Public RoboForm DOM smoke verified 11 synthetic fills, no submissions. Hosted transports are mock-tested; live authenticated ATS completion remains unverified. [Evidence and limits](docs/FORM_PROVIDER_VERIFICATION.md).
+
 ## 0.4.3 — Partial-form and execution recovery · 2026-11-14
 
 - Retain verified row bindings when a university lookup fails after dates fill; recover uniquely identifiable partial rows without guessing ambiguous records. Invalidate bindings when source facts change.
