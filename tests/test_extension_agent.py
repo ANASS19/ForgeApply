@@ -157,3 +157,78 @@ def test_actual_extension_stops_or_recovers_without_guessing(tmp_path,extension_
             else:assert history['status']=='review_ready' and history['steps']==0
             assert history['steps']<20 and not fixture.submissions
         finally:context.close()
+
+
+@pytest.mark.parametrize('language',['en','it'])
+def test_real_extension_partial_records_legacy_catalog_and_checkpoint_recovery(tmp_path,extension_backend,language):
+    """Reproduce dates surviving failed university lookup, then resume the actual MV3 executor."""
+    store.set_setting('candidate_context',{
+        'education':[{'institution':'First University','degree':'Computer Science','level':'masters','completed':True,'start_year':2022,'end_year':2025},
+                     {'institution':'Second University','degree':'Mathematics','level':'bachelors','completed':True,'start_year':2019,'end_year':2022}],
+        'languages':{'Arabic':'Native','English':'Advanced / C1','French':'Fluent','Italian':'Beginner'},
+        'certifications':[{'name':'Synthetic Certificate','issuer':'Example Institute'}],
+        'skills':{'programming':['Python','SQL']}})
+    extension=Path('extension').resolve()
+    with FixtureServer() as fixture,sync_playwright() as playwright:
+        context=playwright.chromium.launch_persistent_context(str(tmp_path/'browser'),channel='chromium',headless=True,
+            args=[f'--disable-extensions-except={extension}',f'--load-extension={extension}'])
+        try:
+            worker=context.service_workers[0] if context.service_workers else context.wait_for_event('serviceworker')
+            identifier=worker.url.split('/')[2];worker.evaluate('async()=>await chrome.storage.local.set({aiMode:false})')
+            page=context.new_page();page.goto(fixture.url+'/workday?actual=1&catalog=1&legacy=1&lang='+language)
+            page.evaluate("step=1;show();document.querySelector('[data-test-section=experience]').remove();window.blockSchool=true")
+            tab_id=worker.evaluate("async()=> (await chrome.tabs.query({})).find(t=>(t.url||'').includes('/workday')).id")
+            panel=context.new_page();panel.goto(f'chrome-extension://{identifier}/panel.html?tab={tab_id}')
+            errors=[];panel.on('pageerror',lambda error:errors.append(str(error)));page.on('pageerror',lambda error:errors.append(str(error)))
+            code=httpx.post(f'http://127.0.0.1:{extension_backend}/api/extension/pairing-code').json()['code']
+            panel.locator('#settingsToggle').click();panel.locator('#backendPort').fill(str(extension_backend))
+            panel.locator('#pairCode').fill(code);panel.locator('#pair').click();expect(panel.locator('#connection')).to_contain_text('Connected locally')
+            panel.locator('#settingsToggle').click()
+            # Exercise real backend 422 diagnostics; entered values must never appear in the error.
+            diagnostic=worker.evaluate("""async()=>{try{await api('/agent/run','POST',{private:'DO_NOT_LOG_THIS'});}catch(error){return {message:error.message,code:error.code};}}""")
+            assert diagnostic['code']=='validation_failed' and 'body.id' in diagnostic['message']
+            assert 'DO_NOT_LOG_THIS' not in diagnostic['message'] and 'versions differ' not in diagnostic['message']
+            # A checkpoint transport failure before the first action must retain its actual stage.
+            worker.evaluate("()=>{globalThis.realApi=api;api=async(path,...args)=>{if(path==='/agent/run')throw Object.assign(Error('Synthetic checkpoint transport failure'),{code:'offline'});return realApi(path,...args);};}")
+            panel.locator('#runAgent').click();expect(panel.locator('#agentGoal')).to_contain_text('save_progress failed (offline)')
+            expect(panel.locator('#agentGoal')).to_contain_text('No browser action started')
+            worker.evaluate('()=>{api=realApi;}')
+            # Simulate an older checkpoint: undefined elapsed time and surplus backend metadata caused strict schema rejection.
+            panel.evaluate("""async()=>{const saved=(await chrome.storage.local.get('agentCheckpoint')).agentCheckpoint;
+              delete saved.run.elapsed_ms;saved.run.at='legacy metadata';saved.run.events.push({tool:'unsupported',outcome:'old'});
+              await chrome.storage.local.set({agentCheckpoint:saved});}""")
+            panel.reload();expect(panel.locator('#runAgent')).to_have_text('Resume application')
+            # The executor continues independent fields after catalog failure instead of stopping at its first lookup.
+            panel.locator('#runAgent').click();expect(panel.locator('#agentGoal')).to_contain_text('human review',timeout=45000)
+            edu=page.locator('[data-test-row^=education-]')
+            expect(edu.nth(0).locator('[name=to1]')).to_have_value('2025')
+            expect(edu.nth(1).locator('[name=to2]')).to_have_value('2022')
+            assert edu.locator('[data-automation-id=selectedItem]').count()==2 # Field-of-study chips; universities still failed.
+            state=panel.evaluate("({fields:snapshot.fields.filter(f=>f.section==='education'),drafts:plan.drafts,actions:plan.actions})")
+            assert all(f['bound_record'] in (0,1) for f in state['fields'])
+            assert not any(d['kind']=='missing_fact' and ('University' in d['label'] or 'Universit' in d['label']) for d in state['drafts'])
+            assert panel.evaluate("ForgeApplyAgent.run.events.some(e=>e.label.includes('continuing independent fields'))")
+            # Catalog becomes available. Resume uses known records, selects every value, and stops for the CV.
+            page.evaluate('window.blockSchool=false')
+            panel.locator('#runAgent').click();expect(panel.locator('#agentGoal')).to_contain_text('human review',timeout=45000)
+            expect(edu.nth(0).locator('[data-automation-id=selectedItem]').first).to_have_text('First University')
+            expect(edu.nth(1).locator('[data-automation-id=selectedItem]').first).to_have_text('Second University')
+            expect(edu.nth(0).locator('[id$="--degree"]')).to_have_text('Master Degree')
+            expect(edu.nth(1).locator('[id$="--degree"]')).to_have_text('Bachelor Degree')
+            for i,(name,level) in enumerate(store.get_setting('candidate_context')['languages'].items()):
+                row=page.locator('[data-test-row^=languages-]').nth(i)
+                expect(row.locator('[id$="--language"]')).to_have_text(name)
+                expect(row.locator('[id$="--overall"]')).to_contain_text(level)
+            expect(page.locator('#skillChips [data-automation-id=selectedItem]')).to_have_text(['Python','SQL'])
+            assert edu.count()==2 and page.locator('[data-test-row^=languages-]').count()==4
+            cv=tmp_path/'synthetic.pdf';cv.write_bytes(b'%PDF-1.4\nSynthetic\n%%EOF')
+            with page.expect_file_chooser() as chooser:panel.locator('#chooseFile').click()
+            chooser.value.set_files(str(cv));expect(page.locator('#uploadStatus')).to_contain_text('Upload accepted')
+            history=panel.evaluate("async()=>await send('agent_history')")[-1]
+            assert history['verified']>=2 and isinstance(history['elapsed_ms'],int)
+            assert not errors and not fixture.submissions
+            page.screenshot(path=str(tmp_path/'partial-records-recovered.png'),full_page=True)
+            panel.screenshot(path=str(tmp_path/'recovered-panel.png'),full_page=True)
+            (tmp_path/'evidence.json').write_text(json.dumps({'language':language,'education':2,'languages':4,'certifications':1,
+                'skills':['Python','SQL'],'upload':'accepted','checkpoint_recovered':True,'submissions':0}),encoding='utf-8')
+        finally:context.close()

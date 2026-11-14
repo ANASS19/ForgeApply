@@ -2,6 +2,7 @@
 <style>body{font:15px Arial;background:#f3f4f6;color:#172437;max-width:850px;margin:30px auto;padding:20px}main{background:white;padding:30px}label{display:block;margin:12px 0}input,select,textarea,button{padding:9px;font:inherit}input:not([type=radio]):not([type=checkbox]),textarea{display:block;min-width:60%}fieldset,[data-automation-id^=workExperience-],[data-automation-id^=education-]{border:1px solid #ccd3df;padding:15px;margin:12px 0}[role=option]{padding:12px;cursor:pointer}nav{display:flex;gap:16px;margin:18px 0}[aria-current=step]{font-weight:bold;color:#325fbc}</style>
 <main></main><script>
 const it=new URLSearchParams(location.search).get('lang')==='it',actual=new URLSearchParams(location.search).get('actual')==='1',catalog=new URLSearchParams(location.search).has('catalog');document.documentElement.lang=it?'it':'en';let recordCounter=16;
+const legacy=new URLSearchParams(location.search).has('legacy');
 const t=(en,italian)=>it?italian:en;
 let step=0,saves=0;const saved=[];
 const stages=['My Information','My Experience','Application Questions','Voluntary Disclosures','Review'];
@@ -45,16 +46,16 @@ function catalogPopup(owner,choices,commit,virtual=false){
  portal.hidden=false;portal.style.cssText='position:relative;background:white;border:1px solid #789;max-height:96px;overflow-y:auto;margin:10px;padding:0';portal.replaceChildren();
  const contents=document.createElement('div');contents.style.cssText='position:relative;height:'+(choices.length*32)+'px';portal.append(contents);
  const render=()=>{contents.replaceChildren();const first=virtual?Math.floor(portal.scrollTop/32):0,last=virtual?Math.min(choices.length,first+3):choices.length;
-  for(let i=first;i<last;i++){const option=document.createElement('div');option.setAttribute('role','option');option.textContent=choices[i];option.style.cssText='box-sizing:border-box;position:absolute;top:'+(i*32)+'px;height:32px;padding:6px;width:100%';option.onclick=()=>{commit(choices[i]);portal.hidden=true;owner.setAttribute('aria-expanded','false');};contents.append(option);}};
+  for(let i=first;i<last;i++){const option=document.createElement('div');option.setAttribute('role',legacy?'treeitem':'option');option.textContent=choices[i];option.style.cssText='box-sizing:border-box;position:absolute;top:'+(i*32)+'px;height:32px;padding:6px;width:100%';option.onclick=()=>{commit(choices[i]);portal.hidden=true;owner.setAttribute('aria-expanded','false');};contents.append(option);}};
  portal.onscroll=render;portal.scrollTop=0;render();owner.setAttribute('aria-expanded','true');
 }
 function referenceField(input,choices){
  if(input.required)input.setAttribute('aria-required','true');
  const wrapper=document.createElement('div');wrapper.dataset.automationId='multiSelectContainer';input.replaceWith(wrapper);wrapper.append(input);input.setAttribute('aria-controls','catalogPortal');
  input.oninput=()=>{input.setCustomValidity(input.value?'Choose a catalog suggestion':'');};
- input.onkeydown=event=>{if(event.key==='Escape'){document.querySelector('#catalogPortal')?.setAttribute('hidden','');return;}if(event.key!=='Enter')return;event.preventDefault();
+ input.onkeydown=event=>{if(event.key==='Escape'){document.querySelector('#catalogPortal')?.setAttribute('hidden','');return;}if(event.key!=='Enter'||legacy&&(event.which!==13||event.keyCode!==13))return;event.preventDefault();
   if(new URLSearchParams(location.search).has('rerender')&&!window.didSwap){window.didSwap=true;const replacement=input.cloneNode();replacement.value='';input.replaceWith(replacement);referenceField(replacement,choices);return;}
-  const query=input.value.toLowerCase();let matches=choices.filter(v=>v.toLowerCase().includes(query));if(new URLSearchParams(location.search).has('ambiguous')&&matches.length===1)matches=[...matches,...matches];
+  const query=input.value.toLowerCase();let matches=window.blockSchool&&input.id.endsWith('--school')?[]:choices.filter(v=>v.toLowerCase().includes(query));if(new URLSearchParams(location.search).has('ambiguous')&&matches.length===1)matches=[...matches,...matches];
   setTimeout(()=>catalogPopup(input,matches,chosen=>{const chip=document.createElement('span');chip.dataset.automationId='selectedItem';chip.textContent=chosen;wrapper.querySelector('[data-automation-id=selectedItem]')?.remove();wrapper.prepend(chip);input.value='';input.required=false;input.setCustomValidity('');input.dispatchEvent(new Event('change',{bubbles:true}));}),120);};
 }
 function buttonField(select,choices,id){
@@ -72,12 +73,12 @@ function catalogize(row,section,n,prefix){
  }
  if(section==='languages'){
   const selects=row.querySelectorAll('select');buttonField(selects[0],['Afrikaans','Albanian','Amharic','Arabic','English','French','German','Italian'],prefix+'--language');
-  selects[1].parentElement.firstChild.textContent=t('Overall*','Livello generale*');buttonField(selects[1],['Beginner','Native','Fluent','Advanced / C1'],prefix+'--overall');
+  selects[1].parentElement.firstChild.textContent=t('Overall*','Livello generale*');buttonField(selects[1],legacy?['1 - Beginner','2 - Native','3 - Fluent','4 - Advanced / C1']:['Beginner','Native','Fluent','Advanced / C1'],prefix+'--overall');
   row.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="'+prefix+'--native">I am fluent in this language.</label>');
  }
  if(section==='experience'&&n===1){
   const skills=document.querySelector('#skills--skills');skills.oninput=()=>{document.querySelector('#skillOptions').textContent='No items. Press Enter to search.';};skills.onclick=()=>{};
-  skills.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();setTimeout(()=>searchSkills(skills),100);}if(event.key==='Escape')document.querySelector('#skillOptions').hidden=true;};
+  skills.onkeydown=event=>{if(event.key==='Enter'&&(!legacy||event.which===13&&event.keyCode===13)){event.preventDefault();setTimeout(()=>searchSkills(skills),100);}if(event.key==='Escape')document.querySelector('#skillOptions').hidden=true;};
   const file=document.querySelector('[name=cv]');file.accept='.pdf,.docx';file.onchange=()=>{const valid=file.files[0]&&file.files[0].size<=5*1024*1024&&/\.(pdf|docx)$/i.test(file.files[0].name);file.setCustomValidity(valid?'':'Upload rejected: PDF/DOCX, maximum 5 MB');let status=document.querySelector('#uploadStatus');if(!status){status=document.createElement('p');status.id='uploadStatus';status.setAttribute('role','status');file.after(status);}status.textContent=valid?'Upload accepted: '+file.files[0].name:'Upload rejected';};
  }
 }

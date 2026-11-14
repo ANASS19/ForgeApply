@@ -111,4 +111,12 @@ git diff --check
 
 Dashboard: `http://127.0.0.1:8765`. API schemas: `/api/docs`.
 
+### Partial records and execution recovery (2026-11-14, preview 0.4.3)
+
+Reproduced a binding failure when education years persisted but university selection did not. Added isolated-world row bindings with source fingerprints, unique partial-fact recovery, explicit catalog/record mismatch states, and bilingual reviewed aliases. Ambiguity, contradictory identities and changed source facts remain blocked. The executor defers failed selections while attempting independent fields, with bounded candidate reindexing verified by regression tests.
+
+Checkpoint schema projection repairs surplus legacy metadata/missing elapsed time. Safe HTTP validation locations and operation-specific failure history replace misleading version/generic interruption messages. The exact exception behind the supplied live zero-action screenshot is still unknown; the user's authenticated Chrome session was inaccessible. Regression tests deliberately reproduce checkpoint transport/validation failure without logging input values.
+
+The final local suite has 108 passing tests, including real unpacked MV3 EN/IT recovery with two educations, four languages, certification, committed skills and a synthetic accepted CV. Legacy key codes, tree-item catalogs, numbered levels and required custom validity are covered. No real employer writes/submissions, private data migrations or profile replacement were performed. See the detailed verification document for reproducible commands and remaining tenant limitations.
+
 In another terminal: `.venv\Scripts\python.exe -m examples.fixture_server --port 8766`. Use `/apply` for a multi-page local application or `/controls` for dynamic controls and an iframe. Keep final submission manual unless explicitly testing the synthetic fixture. Stop the fixture server with Ctrl+C.

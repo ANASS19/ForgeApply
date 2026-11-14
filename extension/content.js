@@ -1,9 +1,11 @@
 // Runs only in Chrome's isolated world after an explicit extension action.
 (() => {
-  const VERSION='workday-catalog-5';
+  const VERSION='workday-catalog-6';
   if (globalThis.ForgeApplyPage?.version===VERSION) return;
   const refs = new Map();
   const observedChoices=new WeakMap();
+  // Keep source bindings out of page-writable DOM attributes; never store candidate values here.
+  const recordBindings=new WeakMap();
   function pointAt(element){
     element.scrollIntoView({block:'center'});
     const doc=element.ownerDocument,r=element.getBoundingClientRect();let cursor=doc.getElementById('forgeapply-cursor');
@@ -29,7 +31,7 @@
     return [...new Set(nodes.map(node=>{const copy=node.cloneNode(true);copy.querySelectorAll('button,svg,[aria-hidden=true]').forEach(n=>n.remove());return copy.textContent.trim();}).filter(Boolean))];
   }
   const navigationName = name => /^(Next|Continue|Review|Save (?:and|&) Continue|Avanti|Continua|Rivedi|Salva e (?:continua|prosegui))$/i.test(name.trim());
-  const choiceKey = text => {const clean=text.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase(),cefr=clean.match(/\b([abc][12])\b/);return cefr?'cefr:'+cefr[1]:({italy:'italia',it:'italia',milan:'milano',mi:'milano',"master's degree":'masters','master degree':'masters','masters degree':'masters','laurea magistrale':'masters',"bachelor's degree":'bachelors','bachelor degree':'bachelors','bachelors degree':'bachelors','laurea triennale':'bachelors'})[clean]||clean;};
+  const choiceKey = text => {const clean=text.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase().replace(/^\d+\s*[-:.)]\s*(?=\D)/,''),cefr=clean.match(/\b([abc][12])\b/);return cefr?'cefr:'+cefr[1]:({italy:'italia',it:'italia',milan:'milano',mi:'milano',"master's degree":'masters','master degree':'masters','masters degree':'masters','laurea magistrale':'masters',"bachelor's degree":'bachelors','bachelor degree':'bachelors','bachelors degree':'bachelors','laurea triennale':'bachelors'})[clean]||clean;};
   const value = e => {
     if(e.type==='password')return '';
     if(e.tagName==='SELECT'&&/^(?:choose|select(?: one)?|scegli|seleziona)(?:\s*\.\.\.)?$/i.test(e.selectedOptions[0]?.text.trim()||''))return '';
@@ -84,7 +86,8 @@
         const identityValue=input.tagName==='SELECT'&&input.value?input.selectedOptions[0]?.text.trim():value(input);
         if(key&&identityValue)identity[key]=identityValue;
       }
-      return {section,record_index,record_identity:identity};
+      const record_key=rows[record_index].key,binding=recordBindings.get(e.ownerDocument)?.get(section+'/'+record_key);
+      return {section,record_index,record_key,record_identity:identity,...(binding||{})};
     }
     return {};
   }
@@ -164,6 +167,13 @@
   async function fill(plan) {
     if(plan.url!==location.href)throw Error('Destination changed; analyze again.');
     const filled=[],errors=[];
+    for(const binding of plan.record_bindings||[]){
+      const entry=resolve(binding.token,plan.snapshot_id),info=recordInfo(entry.element);
+      if(info.section!==binding.section||info.record_key!==binding.record_key)throw Error('Record changed; analyze again.');
+      const doc=entry.element.ownerDocument;
+      if(!recordBindings.has(doc))recordBindings.set(doc,new Map());
+      recordBindings.get(doc).set(info.section+'/'+info.record_key,{bound_record:binding.bound_record,record_fingerprint:binding.record_fingerprint});
+    }
     if(plan.structure_actions?.length){
       let added=0;
       for(const action of plan.structure_actions){
@@ -226,7 +236,7 @@
   async function pickOption(e,wanted){
     if(!e.isConnected)throw Error('Control changed; analyze again.');
     const doc=e.ownerDocument,prior=e.value;
-    const key=(element,name)=>{for(const type of ['keydown','keyup'])element.dispatchEvent(new doc.defaultView.KeyboardEvent(type,{key:name,code:name,bubbles:true,cancelable:true}));};
+    const key=(element,name)=>{const code={Enter:13,Escape:27}[name]||0;for(const type of ['keydown','keypress','keyup'])element.dispatchEvent(new doc.defaultView.KeyboardEvent(type,{key:name,code:name,keyCode:code,which:code,bubbles:true,cancelable:true}));};
     // Close the preceding portal before opening this control. Never select from a different open menu.
     if(doc.activeElement&&doc.activeElement!==e)key(doc.activeElement,'Escape');
     for(const other of doc.querySelectorAll('[role=combobox][aria-expanded=true],button[aria-haspopup=listbox][aria-expanded=true]'))if(other!==e)key(other,'Escape');
@@ -242,7 +252,7 @@
         if(!e.isConnected)throw Object.assign(Error('Control changed; inspect the current page again.'),{code:'CONTROL_CHANGED'});
         const candidates=[...doc.querySelectorAll('[role=listbox],[role=tree]')].filter(visible);
         const owned=doc.getElementById(popupId),root=owned&&visible(owned)?owned:(candidates.length===1?candidates[0]:null);
-        const offered=root?[...root.querySelectorAll('[role=option]')].filter(o=>visible(o)&&o.getAttribute('aria-disabled')!=='true'):[];
+        const offered=root?[...root.querySelectorAll('[role=option],[role=treeitem]')].filter(o=>visible(o)&&o.getAttribute('aria-disabled')!=='true'&&!o.querySelector('[role=option],[role=treeitem]')):[];
         for(const o of offered){const text=(o.getAttribute('aria-label')||o.textContent).trim();if(text)seen.set(text,{label:text,value:text,disabled:false});}
         observedChoices.set(e,[...seen.values()].slice(0,300));
         options=offered.filter(o=>choiceKey(o.getAttribute('aria-label')||o.textContent)===choiceKey(wanted));
@@ -279,7 +289,7 @@
     const current=inspect();
     if(current.final_review||current.site_error)return {transition_verified:false,snapshot:current};
     if(current.truncated_controls)throw Error('This page exceeds the inspection limit. Collapse completed records or continue manually.');
-    const missing=current.fields.some(f=>f.required&&(f.type==='radio'?!f.group_answered:f.type==='checkbox'?!f.checked:!f.value.trim()));
+    const missing=current.fields.some(f=>f.required&&(!f.valid||(f.type==='radio'?!f.group_answered:f.type==='checkbox'?!f.checked:!f.value.trim())));
     if(missing)return {transition_verified:false,snapshot:current};
     if(entry.element.form&&!entry.element.form.checkValidity()){entry.element.form.reportValidity();return {transition_verified:false,snapshot:inspect()};}
     const before=document.body.innerText;pointAt(entry.element);entry.element.click();

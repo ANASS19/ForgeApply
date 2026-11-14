@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.3 — Partial-form and execution recovery · 2026-11-14
+
+- Retain verified row bindings when a university lookup fails after dates fill; recover uniquely identifiable partial rows without guessing ambiguous records. Invalidate bindings when source facts change.
+- Continue independent fields after an unresolved selection, then pause for review. Keep tool candidate IDs bounded and tied to their original actions.
+- Normalize old checkpoints before resume/save; expose the failing operation and safe HTTP validation details instead of a generic interruption/version error.
+- Support legacy Enter key codes, scoped tree items and numbered option labels. Block Next when required custom controls remain invalid.
+- Distinguish missing information from catalog mismatches and unmatched records; preserve reviewed bilingual record aliases.
+- Verification: 108 local tests, including actual MV3 Chromium EN/IT catalog failure/recovery, two education records, four languages, certification, committed skills and accepted synthetic CV. No authenticated live Workday completion or real submission is claimed.
+
+See [evidence](docs/WORKDAY_VERIFICATION.md), [reload instructions](docs/USAGE.md#update-safely) and [remaining limits](RELEASE_READINESS.md).
+
 ## 0.4.2 — Agent and Workday regression preview · 2026-11-14
 
 - Add Complete Application: a short-horizon observe/plan/act/verify loop with 80-step, three-minute and three-model-call bounds. Supported steps advance automatically; unknown facts, documents, validation, legal review and final review stop for the user.

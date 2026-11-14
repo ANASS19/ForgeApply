@@ -1,6 +1,6 @@
 
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(()=>{});
-const WORKER_VERSION='0.4.2';
+const WORKER_VERSION='0.4.3';
 chrome.runtime.onInstalled.addListener(()=>{
   chrome.contextMenus.create({id:'forge-analyze',title:'ForgeApply — Analyze this page',contexts:['page','editable']});
 });
@@ -27,8 +27,10 @@ async function api(path,method='GET',body) {
   try{response=await fetch(BASE+'/api/extension'+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(120000)});}catch{throw Object.assign(Error('Start the local ForgeApply backend, then retry.'),{code:'offline'});}
   const data=await response.json();
   if(!response.ok){
-    const detail=typeof data.detail==='string'?data.detail:response.status===422?'The backend and extension versions differ. Restart ForgeApply, then reopen the extension.':'The request could not be completed. Inspect the page and retry.';
-    throw Object.assign(Error(detail),{code:response.status===401?'pair_required':'request_failed'});
+    // Report validation locations, never Pydantic's input values (which can contain profile facts).
+    const fields=response.status===422&&Array.isArray(data.detail)?data.detail.slice(0,5).map(e=>e.loc.join('.')+' ('+e.type+')').join(', '):'';
+    const detail=fields?'Request validation failed for '+path+': '+fields:typeof data.detail==='string'?data.detail:'The request could not be completed. Inspect the page and retry.';
+    throw Object.assign(Error(detail),{code:response.status===401?'pair_required':response.status===422?'validation_failed':'request_failed'});
   }
   return data;
 }

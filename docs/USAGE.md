@@ -1,4 +1,4 @@
-# Using ForgeApply 0.4.2
+# Using ForgeApply 0.4.3
 
 [Overview](../README.md) · [Extension details](../extension/README.md) · [Release limitations](../RELEASE_READINESS.md)
 
@@ -78,6 +78,8 @@ Click **Complete Application** for a bounded run. The assistant observes the cur
 
 Checkpoints are stored locally in Chrome and backend SQLite. Closing/reloading the panel interrupts execution; reopen it and resume explicitly after checking the page. It does not run invisibly after the panel closes. A changed URL, tab, origin or browser permission may require a fresh run. Completed field values and existing record identities prevent duplicate work.
 
+An unresolved dropdown is deferred while the agent attempts other independent fields. It then pauses with the outstanding controls instead of repeatedly clicking the same choice. **Saved fact** means the profile information exists but needs a matching website option; **unmatched row** means a populated record could not be safely associated with your history. Check the offered choices or select on the page, then Resume. The assistant never treats a typed query as proof of a committed catalog selection.
+
 The cyan cursor is a **page overlay**, not the operating system mouse. Browser-level pointer tools are available separately in the managed Playwright Browser Agent. The extension uses semantic targets, native focus/blur, keyboard search, verified catalog selections and bounded menu scrolling.
 
 Under **Agent actions**, Show current screenshot captures only the active authorized application tab. Optional **Allow screenshot reasoning for this run** sends a resized screenshot to the configured model when it is used for tool planning. It defaults off; hosted inference also requires remote consent. Screenshot-derived suggestions still resolve to current DOM tool candidates. Unrestricted visual coordinate clicking and closed-shadow/cross-origin control are not implemented.
@@ -149,6 +151,8 @@ git pull --ff-only
 
 At `chrome://extensions`, click **Reload** on ForgeApply, then reopen its panel. Existing data uses additive migrations; the assistant connection stays saved. Inspect your partially completed form before continuing. Arbitrary unsaved website state is not restored after a crash/reload.
 
+For this update, confirm the extension card shows **0.4.3** and the dashboard `/api/health` reports the same version. Close the old ForgeApply panel, invoke the toolbar icon on the application tab, and choose **Keep open**. Use **Prepare & Fill this page** first to re-observe a partially completed form, then **Resume application**. Do not remove/reinstall the extension or clear your data. You do not need a new pairing code unless you revoked the connection.
+
 ## Troubleshooting
 
 | Symptom | Action |
@@ -156,6 +160,8 @@ At `chrome://extensions`, click **Reload** on ForgeApply, then reopen its panel.
 | Empty-looking folder picker | Select the `extension` directory and click Select folder; do not search for a `.crx` |
 | Backend offline | Start ForgeApply, open its loopback URL, check the port; the saved pairing need not be replaced |
 | Update required / Unknown extension request | Reload ForgeApply at `chrome://extensions`, restart the backend, and reopen the panel |
+| Failed before any action | Read the operation/error category in Agent actions. `save_progress` concerns checkpoint storage/API transport, not website selection. Restart/reconnect the indicated component, then Resume |
+| Saved fact but no option selected | Select the website's actual equivalent option; do not re-enter or change your qualification merely to match a catalog |
 | Pair code rejected | Generate a fresh code; it is single-use and expires after five minutes |
 | Form does not react | Inspect required answers, native validation and custom dropdown selection; use the website manually for unsupported controls |
 | Country/province/city changes other fields | Prepare & Fill re-observes within bounded limits; inspect and retry unresolved choices if the page is still loading |

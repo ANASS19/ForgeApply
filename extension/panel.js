@@ -4,7 +4,7 @@ let documentKind='letter';
 const edits=new Map();
 async function send(type,data={}) {
   const result=await chrome.runtime.sendMessage({type,...data});
-  if(type==='status'&&result?.ok&&result.worker_version!=='0.4.2')throw Object.assign(Error('Click Reload assistant below, then reopen ForgeApply. Your pairing will stay saved.'),{code:'extension_update_required'});
+  if(type==='status'&&result?.ok&&result.worker_version!=='0.4.3')throw Object.assign(Error('Click Reload assistant below, then reopen ForgeApply. Your pairing will stay saved.'),{code:'extension_update_required'});
   if(!result?.ok){
     const detail=result?.error==='Unknown extension request'?'Reload ForgeApply at chrome://extensions, then reopen this panel. The background worker is an older version.':result?.error||'Reopen the extension to reconnect.';
     throw Object.assign(Error(detail),{code:result?.error_code});
@@ -42,7 +42,7 @@ async function status() {
   const {pairToken}=await chrome.storage.local.get('pairToken');$('pairSetup').hidden=!!pairToken;
   try {
     const state=await send('status');paired=true;$('pairSetup').hidden=true;
-    if(state.bridge_version!=='0.4.2')throw Object.assign(Error('Restart the local ForgeApply backend to load the matching version. Your pairing stays saved.'),{code:'backend_update_required'});
+    if(state.bridge_version!=='0.4.3')throw Object.assign(Error('Restart the local ForgeApply backend to load the matching version. Your pairing stays saved.'),{code:'backend_update_required'});
     $('connection').textContent='Connected locally | '+state.model;
     $('documents').textContent=Object.entries(state.documents).map(([lang,d])=>lang.toUpperCase()+': '+(d.available?d.filename:'not configured')).join(' | ');
     $('pairCode').value='';
@@ -96,7 +96,7 @@ function renderPlan() {
     area.value=edits.has(area.dataset.key)?edits.get(area.dataset.key):d.value;
     area.placeholder='Enter your verified answer / Inserisci una risposta verificata';
     area.addEventListener('input',()=>edits.set(area.dataset.key,area.value));label.append(area);card.append(label);
-    const hint=document.createElement('small');hint.textContent=d.source==='user_input'?'Missing fact: your answer is needed.':d.source==='verified_fact_template'?'Draft from verified profile facts - review before filling.':'AI draft - verify every claim.';card.append(hint);
+    const hint=document.createElement('small');hint.textContent=d.kind==='selection_unresolved'?'Saved fact: '+d.known_value+'. Choose the corresponding website option; no equivalence was assumed.':d.kind==='record_unresolved'?'This populated row could not be safely matched to a saved record. Check its identity on the page.':d.source==='user_input'?'Missing fact: your answer is needed.':d.source==='verified_fact_template'?'Draft from verified profile facts - review before filling.':'AI draft - verify every claim.';card.append(hint);
     if(d.facts_used?.length){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Supporting facts';details.append(summary);for(const fact of d.facts_used){const p=document.createElement('p');p.textContent=fact.text||JSON.stringify(fact.value);details.append(p);}card.append(details);}
     return {card,optional:d.optional};
   });

@@ -20,7 +20,9 @@ Windows Python 3.13, actual FastAPI server, SQLite and real Playwright Chromium 
 | Model assistance | Strict structured responses, reviewed references to current profile facts, host-scoped learned mappings, deterministic/manual fallback |
 | Privacy and storage | Origin/CSRF controls, loopback-only server, additive SQLite migrations, no credentials or applicant files in source |
 
-The full suite currently has 103 passing tests and one dependency deprecation warning. No tests are skipped. JavaScript syntax, dependency integrity and diff whitespace checks also pass. [Detailed reconstruction and evidence](docs/WORKDAY_VERIFICATION.md) distinguishes read-only public inspection from authenticated workflows.
+The full suite currently has 108 passing tests and one dependency deprecation warning. No tests are skipped. JavaScript syntax, dependency integrity and diff whitespace checks also pass. [Detailed reconstruction and evidence](docs/WORKDAY_VERIFICATION.md) distinguishes read-only public inspection from authenticated workflows.
+
+Preview 0.4.3 adds EN/IT regressions for dates filled before university commitment, independent-field continuation after lookup failure, legacy keyboard/tree catalogs, numbered proficiency choices, older checkpoint recovery and value-free validation diagnostics. Saved-fact/catalog mismatches no longer appear as missing applicant information. These controlled results do not identify the exact exception behind the owner's earlier zero-action live run.
 
 The Italian portal and actual Workday input shapes were reconstructed from locally received control metadata and screenshots. Tests use synthetic people, organizations and documents. The development tools could not access the user's authenticated browser session. An employer's visible default nationality/birthplace is never evidence about the candidate.
 

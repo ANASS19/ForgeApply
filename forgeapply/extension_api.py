@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter,Depends,HTTPException,Request
 from pydantic import BaseModel,Field,ConfigDict
 from . import store,discovery
-from .form_logic import known_answer,SENSITIVE_QUESTION,normalize_label,required_label,matching_choice,bind_records,verified_records,record_question_key,sensitive_field,record_storage,verified_skills
+from .form_logic import known_answer,SENSITIVE_QUESTION,normalize_label,required_label,matching_choice,bind_records,verified_records,record_question_key,sensitive_field,record_storage,verified_skills,record_data,record_fingerprint
 from .application_answers import draft_answer,draft_resume,response_language,needs_exact_fact,evidence_catalog,question_kind,application_specific_question
 from .site_policy import capabilities
 from .llm import DecisionModel,LLMError,DEFAULT_LOCAL_MODEL
@@ -108,7 +108,7 @@ def disconnect(identifier:str=Depends(authorized)):
 def status(identifier:str=Depends(authorized)):
     profile=store.get_setting('profile',{})
     settings=store.get_setting('llm',{})
-    return {'ok':True,'bridge_version':'0.4.2','extension_id':identifier,'model':settings.get('model',DEFAULT_LOCAL_MODEL),
+    return {'ok':True,'bridge_version':'0.4.3','extension_id':identifier,'model':settings.get('model',DEFAULT_LOCAL_MODEL),
             'profile_fields':sorted(k for k,v in profile.items() if v and not k.startswith('resume_')),
             'documents':{lang:{'available':bool(profile.get('resume_'+lang)),'filename':__import__('pathlib').Path(profile.get('resume_'+lang,'')).name}
                          for lang in ('en','it')}}
@@ -213,6 +213,9 @@ class FieldIn(BaseModel):
     section:Literal['','experience','education','languages','certifications']=''
     record_index:int|None=Field(default=None,ge=0,le=19)
     record_identity:dict[str,str]=Field(default_factory=dict,max_length=3)
+    record_key:str=Field(default='',max_length=100)
+    bound_record:int|None=Field(default=None,ge=0,le=99)
+    record_fingerprint:str=Field(default='',max_length=64)
     automation_id:str=Field(default='',max_length=300)
     automation_path:list[str]=Field(default_factory=list,max_length=8)
     phone_prefix:str=Field(default='',pattern=r'^(?:\+\d{1,4})?$')
@@ -291,10 +294,17 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
                                    'choices':choices,'source':'user_input','needs_review':True,'facts_used':[]})
                     choice_groups.add(group)
             review_choice=group in choice_groups
-        if not answer and not item.value and not excluded:
+        if not answer and (not item.value or item.selection_confirmed is False) and not excluded:
+            fact=known_answer(field|{'options':[],'value':''},profile,answers,context)
+            record_unresolved=item.section and context['_form_bindings'].get((item.section,item.record_index)) is None and bool(verified_records(context,item.section))
             draft=draft_answer(item.label,profile,context,language=value.language,page_language=value.page_language,
                                job_title=value.job_title,company=value.company,job_description=value.job_description)
-            if draft: drafts.append(draft|{'index':item.index,'token':item.token,'label':display_label})
+            if fact or record_unresolved:
+                drafts.append({'index':item.index,'token':item.token,'label':display_label,'value':'',
+                               'kind':'selection_unresolved' if fact else 'record_unresolved','known_value':fact[0] if fact else '',
+                               'optional':not inferred_required,'source':'user_input','needs_review':True,'facts_used':[],
+                               **({'choices':[o.model_dump() for o in item.options if o.value and not o.disabled]} if item.options else {})})
+            elif draft: drafts.append(draft|{'index':item.index,'token':item.token,'label':display_label})
             elif item.type in ('select','combobox') and item.options:
                 drafts.append({'index':item.index,'token':item.token,'label':display_label,'value':'','kind':'missing_choice',
                                'optional':not inferred_required,
@@ -350,7 +360,10 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
         needed=min(10,len(verified_records(context,control.section)))-control.existing_count
         if needed>0 and not conflict:structure_actions.append({'token':control.token,'section':control.section,'count':needed})
     event(identifier,value.url,'prepare',f'{len(actions)} known fields; {len(unknown)} unresolved; AI proposals {len(proposals)}')
-    return {'snapshot_id':value.snapshot_id,'url':value.url,'actions':actions,'unknown':unknown,
+    record_bindings=[{'token':f.token,'record_key':f.record_key,'section':f.section,
+                      'bound_record':index,'record_fingerprint':record_fingerprint(record_data(context,f.section,index))}
+                     for f in value.fields if f.record_key and (index:=context['_form_bindings'].get((f.section,f.record_index))) is not None]
+    return {'snapshot_id':value.snapshot_id,'url':value.url,'actions':actions,'unknown':unknown,'record_bindings':record_bindings,
             'proposals':proposals,'drafts':drafts,'manual':manual,'structure_actions':structure_actions,'ai_error':ai_error,'model_called':model_called,'policy':policy,
             'language':response_language(page_language=value.page_language,preferred=value.language),
             'note':'Known facts fill directly. Read and confirm longer answers before they are filled.'}

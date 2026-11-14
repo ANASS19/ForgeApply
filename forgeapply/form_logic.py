@@ -1,6 +1,8 @@
 """Shared deterministic fact mapping for managed browser and extension preparation."""
 import re
 import unicodedata
+import hashlib
+import json
 from urllib.parse import urlsplit
 from .store import PROFILE_REFERENCE_FIELDS,PROFILE_BINDABLE_FIELDS
 
@@ -93,6 +95,7 @@ def _known_text_answer(field:dict,profile:dict,answers:list[dict],context:dict|N
 
 def _choice_key(value:str) -> str:
     value=normalize_label(value).casefold().strip()
+    value=re.sub(r'^\d+\s*[-:.)]\s*(?=\D)', '',value)
     cefr=re.search(r'\b([abc][12])\b',value)
     if cefr:return 'cefr:'+cefr[1]
     aliases={'italy':'italia','it':'italia','mi':'milano','english':'inglese','italian':'italiano','french':'francese','arabic':'arabo','beginner':'principiante','advanced':'avanzato','native':'madrelingua','native or bilingual':'madrelingua','yes':'true','si':'true','sì':'true','on':'true','1':'true',
@@ -133,6 +136,23 @@ def record_storage(context:dict,section:str,index:int) -> dict:
     return context[section][index]
 
 
+def record_fingerprint(record:dict) -> str:
+    """Invalidate an isolated-world row binding whenever its verified source changes."""
+    facts={k:v for k,v in record.items() if k!='form_answers'}
+    return hashlib.sha256(json.dumps(facts,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+
+def _identity_matches(record:dict,identity:dict) -> bool:
+    for key,value in identity.items():
+        allowed=[str(record.get(key,''))]
+        question={'institution':'School or University','name':'Language','title':'Job Title','employer':'Company'}.get(key)
+        if question:
+            saved=next((a for q,a in record.get('form_answers',{}).items() if record_question_key(q)==record_question_key(question)),{})
+            if saved.get('value'):allowed.append(str(saved['value']))
+        if value.strip().casefold() not in [v.strip().casefold() for v in allowed]:return False
+    return True
+
+
 def bind_records(fields:list[dict],context:dict) -> dict:
     """Match populated rows by explicit identity, then allocate empty rows without duplicates."""
     bindings={}
@@ -140,16 +160,43 @@ def bind_records(fields:list[dict],context:dict) -> dict:
         rows={}
         for f in fields:
             if f.get('section')==section and f.get('record_index') is not None:rows.setdefault(f['record_index'],[]).append(f)
-        records=verified_records(context,section);used=set();blanks=[];conflict=False
+        records=verified_records(context,section);used=set();blanks=[];partials=[];conflict=False
         for row,items in sorted(rows.items()):
             identity={k:v for f in items for k,v in f.get('record_identity',{}).items() if v}
+            hints={(f.get('bound_record'),f.get('record_fingerprint')) for f in items if f.get('bound_record') is not None and f.get('record_fingerprint')}
+            hinted=[i for i,r in records if (i,record_fingerprint(r)) in hints and i not in used and _identity_matches(r,identity)]
+            if len(hints)==1 and len(hinted)==1:bindings[(section,row)]=hinted[0];used.add(hinted[0]);continue
+            if hints:bindings[(section,row)]=None;conflict=True;continue
             if not identity:
-                if any(f.get('checked') if f.get('type') in ('checkbox','radio') else f.get('value') for f in items):bindings[(section,row)]=None;conflict=True
+                if any(f.get('checked') if f.get('type') in ('checkbox','radio') else f.get('value') for f in items):partials.append((row,items))
                 else:blanks.append(row)
                 continue
-            matches=[i for i,r in records if all(str(r.get(k,'')).strip().casefold()==v.strip().casefold() for k,v in identity.items()) and i not in used]
+            matches=[i for i,r in records if _identity_matches(r,identity) and i not in used]
             if len(matches)==1:bindings[(section,row)]=matches[0];used.add(matches[0])
             else:bindings[(section,row)]=None;conflict=True
+        for row,items in partials:
+            matches=[]
+            populated=[f for f in items if f.get('type') in ('checkbox','radio') and f.get('checked')]
+            populated+=[f for f in items if f.get('type') not in ('checkbox','radio') and f.get('value')]
+            for i,r in records:
+                if i in used:continue
+                candidate=context|{'_form_bindings':{(section,row):i}}
+                compatible=True;compared=0
+                for f in populated:
+                    if f.get('type') in ('checkbox','radio'):compatible=False;break
+                    fact=record_answer(f|{'value':''},candidate)
+                    # Unknown populated fields cannot establish a safe record identity.
+                    if not fact:compatible=False;break
+                    current=str(f['value'])
+                    option=next((o for o in f.get('options',[]) if o.get('value')==current),None)
+                    if option:current=option.get('label',current)
+                    if _choice_key(fact[0])!=_choice_key(current):compatible=False;break
+                    compared+=1
+                if compatible and compared:matches.append(i)
+            index=matches[0] if len(matches)==1 else None
+            bindings[(section,row)]=index
+            if index is not None:used.add(index)
+            else:conflict=True
         for row in blanks:
             remaining=[i for i,_ in records if i not in used]
             index=remaining[0] if remaining and not conflict else None
@@ -164,7 +211,7 @@ def record_answer(field:dict,context:dict) -> tuple[str,str]|None:
     index=context.get('_form_bindings',{}).get((section,row))
     if index is None:return None
     record=record_data(context,section,index);label=re.sub(r'\s*\((?:actual or expected|effettivo o previsto)\)\s*$','',normalize_label(field.get('label','')),flags=re.I)
-    remembered=record.get('form_answers',{}).get(record_question_key(label))
+    remembered=next((a for q,a in record.get('form_answers',{}).items() if record_question_key(q)==record_question_key(label)),None)
     if isinstance(remembered,dict) and remembered.get('value'):return remembered['value'],f'context:{section}.{index}.reviewed_answer'
     patterns=({'title':r'job title|role|ruolo|qualifica','employer':r'company|employer|azienda|datore di lavoro',
                'summary':r'role description|job description|description|descrizione(?: del ruolo)?',
@@ -206,6 +253,10 @@ def record_answer(field:dict,context:dict) -> tuple[str,str]|None:
 
 def record_question_key(label:str) -> str:
     clean=re.sub(r'\s*\((?:actual or expected|effettivo o previsto)\)\s*$','',normalize_label(label),flags=re.I)
+    for key,pattern in [('school or university',r'school or university|school|university|università|istituto|scuola o università'),
+                        ('company',r'company|employer|azienda|datore di lavoro'),('job title',r'job title|role|ruolo|qualifica'),
+                        ('language',r'language|lingua')]:
+        if re.fullmatch(pattern,clean,re.I):return key
     for prefix,pattern in [('start',r'from|start(?: date)?|data (?:di )?inizio'),('end',r'to|end(?: date)?|data (?:di )?fine|graduation')]:
         match=re.fullmatch(rf'(?:{pattern})(?: (month|year|mese|anno))?',clean,re.I)
         if match:return prefix+'_'+({'month':'month','mese':'month','year':'year','anno':'year'}.get((match[1] or '').lower(),'date'))

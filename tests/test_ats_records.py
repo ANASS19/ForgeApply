@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from forgeapply.app import app
 from forgeapply import store
-from forgeapply.form_logic import bind_records,known_answer
+from forgeapply.form_logic import bind_records,known_answer,record_fingerprint,matching_choice
 from tests.test_extension import paired
 
 
@@ -142,3 +142,49 @@ def test_workday_overall_and_gpa_keep_distinct_scales():
     year=fields[1]|{'label':'From Year','automation_id':'dateSectionYear-input'}
     assert known_answer(year,{},[],context)[0]=='2022'
     assert known_answer(year|{'label':'To (Actual or Expected)'},{},[],context)[0]=='2025'
+
+
+def test_partial_education_dates_recover_unique_binding_without_guessing():
+    context={'education':[{'institution':'First University','completed':True,'start_year':2022,'end_year':2025},
+                          {'institution':'Second University','completed':True,'start_year':2019,'end_year':2022}]}
+    school={'section':'education','record_index':0,'label':'School or University','type':'combobox','value':''}
+    year=school|{'label':'To Year','type':'text','value':'2025'}
+    bindings=bind_records([school,year],context)
+    assert bindings[('education',0)]==0
+    assert known_answer(school,{},[],context|{'_form_bindings':bindings})[0]=='First University'
+    assert bind_records([school,year|{'value':'1998'}],context)[('education',0)] is None
+    ambiguous=context|{'education':[context['education'][0],context['education'][1]|{'end_year':2025}]}
+    assert bind_records([school,year],ambiguous)[('education',0)] is None
+    assert bind_records([school,year,school|{'label':'Unrecognized detail','value':'Manual text'}],context)[('education',0)] is None
+
+
+def test_isolated_record_binding_survives_partial_selection_but_rejects_changed_source_or_identity():
+    record={'institution':'First University','completed':True,'end_year':2025}
+    field={'section':'education','record_index':0,'bound_record':0,'record_fingerprint':record_fingerprint(record),
+           'label':'To Year','value':'2025','type':'text'}
+    assert bind_records([field],{'education':[record]})[('education',0)]==0
+    assert bind_records([field|{'record_identity':{'institution':'Other University'}}],{'education':[record]})[('education',0)] is None
+    assert bind_records([field],{'education':[record|{'institution':'Updated University'}]})[('education',0)] is None
+    reviewed=record|{'form_answers':{'università':{'value':'Other'}}}
+    assert record_fingerprint(reviewed)==record_fingerprint(record)
+    assert bind_records([field|{'record_identity':{'institution':'Other'}}],{'education':[reviewed]})[('education',0)]==0
+    context={'education':[reviewed],'_form_bindings':{('education',0):0}}
+    assert known_answer(field|{'value':'','label':'School or University'}, {},[],context)[0]=='Other'
+
+
+def test_known_catalog_fact_is_not_reported_as_missing_information():
+    store.set_setting('candidate_context',{'education':[{'institution':'First University','level':'masters','completed':True}]})
+    with TestClient(app,base_url='http://127.0.0.1:8765') as client:
+        headers,_=paired(client)
+        field={'index':0,'token':'degree','record_key':'education-88','section':'education','record_index':0,
+               'label':'Degree','type':'combobox','required':True,'options':[{'value':'diploma','label':'Technical Diploma'}]}
+        body={'url':'https://example.test/apply','snapshot_id':'s','fields':[field],'site_authorized':True}
+        plan=client.post('/api/extension/plan',headers=headers,json=body).json()
+        assert not plan['actions'] and plan['drafts'][0]['kind']=='selection_unresolved'
+        assert plan['drafts'][0]['known_value']=="Master's degree"
+        assert plan['record_bindings'][0]['bound_record']==0
+        assert 'institution' not in plan['record_bindings'][0]
+        conflict=client.post('/api/extension/plan',headers=headers,json=body|{'fields':[field|{'record_identity':{'institution':'Unrelated University'}}]}).json()
+        assert conflict['drafts'][0]['kind']=='record_unresolved' and not conflict['record_bindings']
+    assert matching_choice('Beginner',[{'label':'1 - Beginner','value':'basic'}])['value']=='basic'
+    assert matching_choice('C1',[{'label':'1 - Beginner','value':'basic'}]) is None

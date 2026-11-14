@@ -7,7 +7,7 @@
 [Getting started](docs/USAGE.md) · [Chrome extension](extension/README.md) · [What's new](CHANGELOG.md) · [Verified capabilities](RELEASE_READINESS.md)
 
 [![Tests](https://github.com/ANASS19/ForgeApply/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/ANASS19/ForgeApply/actions/workflows/tests.yml)
-![Preview 0.4.2](https://img.shields.io/badge/preview-0.4.2-8dbbff?labelColor=112742)
+![Preview 0.4.3](https://img.shields.io/badge/preview-0.4.3-8dbbff?labelColor=112742)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-63e1f5?labelColor=112742)
 ![Local first](https://img.shields.io/badge/local--first-human%20review-63e1f5?labelColor=112742)
 
@@ -71,7 +71,7 @@ The [synthetic benchmark](benchmarks/README.md) found factual errors with both t
 
 Data is stored outside the repository under `%USERPROFILE%\.forgeapply` by default. The server binds to loopback; extension pairing is authenticated. No telemetry is implemented. SQLite, CVs and browser sessions rely on OS permissions and are **not application-encrypted**. Hosted inference can receive candidate facts and page content after opt-in; keep it off for local-only inference.
 
-**103 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, virtualized Workday-style catalogs, an Italian enterprise portal, pause/resume, replaced controls, ambiguous choices, page errors and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works. See the [regression evidence](docs/WORKDAY_VERIFICATION.md).
+**108 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, virtualized Workday-style catalogs, an Italian enterprise portal, partial-record recovery, pause/resume, replaced controls, ambiguous choices, page errors and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works. See the [regression evidence](docs/WORKDAY_VERIFICATION.md).
 
 ```powershell
 .venv\Scripts\python.exe -m pytest -q

@@ -1,4 +1,16 @@
-# Enterprise-form regression evidence — 0.4.2
+# Enterprise-form regression evidence — 0.4.3
+
+## Recovery regressions added in 0.4.3
+
+The earlier fixture did not reproduce an important partial-completion state: dates had filled but the university reference had not committed. The binder treated that row as unidentified, so known education facts disappeared from subsequent plans. Row bindings now live in the content script's isolated world, with a fingerprint of the verified source. Reinspection retains the binding; changed source facts or contradictory identities stop reuse. Already partial rows can recover only from a unique match across their populated, recognized facts. Ambiguous or unknown populated data stays manual. User-reviewed English/Italian catalog aliases remain tied to their record.
+
+The earlier executor also aborted at its first unresolved selection. It now defers that field once, continues other independent verified actions, and pauses for selection/validation review before navigation. A regression caught and corrected candidate-ID numbering after deferred actions were removed. Limits remain unchanged.
+
+Older malformed checkpoints could send extra metadata or a missing/nonfinite elapsed time to strict API models. Checkpoints now project onto the current schema before resume/save. The worker reports safe validation locations instead of classifying every HTTP 422 as a version mismatch. Failed runs retain the failing operation and error category, including `save_progress` before any browser action. The screenshots alone do **not** establish which exception caused the owner's particular zero-action run; authenticated browser access was unavailable. The repaired paths are reproduced below.
+
+The new real-MV3 regression runs in both languages with two education records, four language records, one certification and two skills. It deliberately fails university lookup while other fields fill, restores the catalog, resumes, commits both universities and accepts a synthetic CV. It also tests legacy `keyCode`/`which` Enter handlers, scoped tree items, virtual numbered proficiency choices, a simulated checkpoint transport failure, a malformed older checkpoint, and real backend 422 redaction. No employer is contacted and no submission occurs. Synthetic screenshots and JSON evidence remain outside Git under the local QA directory.
+
+Known facts without a matching website option are now labeled `selection_unresolved`; unmatched populated records are `record_unresolved`. Neither is presented as missing candidate information. An unknown degree equivalence, GPA or proficiency scale still requires review.
 
 ## What was reproduced
 
@@ -37,7 +49,7 @@ A measured synthetic run used **33 steps, 29 verified actions and zero model cal
 
 Separate real Chromium cases verify duplicate/ambiguous results, a control replaced during catalog search, page/server errors, and final-review detection with Workday's concatenated progress label. Existing tests cover same-origin frames, multiple pages, upload rejection, manual-edit preservation, pairing and security boundaries.
 
-The full local suite has **103 passing tests**, no skips/failures, and one Starlette/httpx deprecation warning. CI results must be checked for the published commit. Private test screenshots, traces and metrics are outside Git; only synthetic fixture/test source is published.
+The full local suite has **108 passing tests**, no skips/failures, and one Starlette/httpx deprecation warning. CI results must be checked for the published commit. Private test screenshots, traces and metrics are outside Git; only synthetic fixture/test source is published.
 
 ## Model and visual checks
 
@@ -50,6 +62,7 @@ These are small smoke probes, not model safety certification or full model-drive
 ```powershell
 .venv\Scripts\python.exe -m pytest -q
 .venv\Scripts\python.exe -m pytest tests/test_extension_agent.py tests/test_workday_extension.py -q
+.venv\Scripts\python.exe -m pytest tests/test_extension_agent.py -k partial_records -q
 .venv\Scripts\python.exe -m forgeapply
 ```
 
