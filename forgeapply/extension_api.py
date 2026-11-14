@@ -1,5 +1,6 @@
 """Narrow authenticated MV3 bridge. No arbitrary local files or managed-browser commands."""
 import hashlib
+import base64
 import re
 import secrets
 import time
@@ -107,7 +108,7 @@ def disconnect(identifier:str=Depends(authorized)):
 def status(identifier:str=Depends(authorized)):
     profile=store.get_setting('profile',{})
     settings=store.get_setting('llm',{})
-    return {'ok':True,'bridge_version':'0.4.1','extension_id':identifier,'model':settings.get('model',DEFAULT_LOCAL_MODEL),
+    return {'ok':True,'bridge_version':'0.4.2','extension_id':identifier,'model':settings.get('model',DEFAULT_LOCAL_MODEL),
             'profile_fields':sorted(k for k,v in profile.items() if v and not k.startswith('resume_')),
             'documents':{lang:{'available':bool(profile.get('resume_'+lang)),'filename':__import__('pathlib').Path(profile.get('resume_'+lang,'')).name}
                          for lang in ('en','it')}}
@@ -117,6 +118,79 @@ class ChoiceIn(BaseModel):
     label:str=Field(default='',max_length=500)
     value:str=Field(default='',max_length=500)
     disabled:bool=False
+
+
+class AgentCandidateIn(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:int=Field(ge=0,le=4)
+    tool:Literal['fill','add_record','advance_step','request_input','final_review']
+    label:str=Field(max_length=500)
+
+
+class AgentDecisionIn(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    url:str=Field(max_length=2000)
+    stage:str=Field(default='',max_length=500)
+    use_ai:bool=False
+    screenshot:str=Field(default='',max_length=3_000_000)
+    candidates:list[AgentCandidateIn]=Field(min_length=1,max_length=5)
+
+
+@router.post('/agent/decision')
+def agent_decision(value:AgentDecisionIn,identifier:str=Depends(authorized)):
+    if not capabilities(value.url)['form_preparation']:raise HTTPException(403,'This site stays manual')
+    if len({c.id for c in value.candidates})!=len(value.candidates):raise HTTPException(400,'Duplicate tool candidates')
+    selected={'candidate_id':value.candidates[0].id,'source':'deterministic','reason':'Next permitted action'}
+    if value.use_ai:
+        try:
+            image=None
+            if value.screenshot:
+                try:image=base64.b64decode(value.screenshot,validate=True)
+                except ValueError:raise HTTPException(400,'Invalid screenshot encoding')
+                if len(image)>2_000_000 or not image.startswith((b'\x89PNG\r\n\x1a\n',b'\xff\xd8\xff')):raise HTTPException(400,'Invalid or oversized screenshot')
+            result=DecisionModel.from_settings(store.get_setting('llm',{})).choose_browser_step([c.model_dump() for c in value.candidates],value.stage,screenshot=image)
+            selected=result|{'source':'model'}
+        except (LLMError,ValueError):selected['reason']='Model unavailable or invalid; using the next verified action'
+    return selected
+
+
+class AgentEventIn(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    tool:Literal['inspect','fill','add_record','advance_step','request_input','final_review','pause','stop']
+    label:str=Field(default='',max_length=500)
+    outcome:Literal['started','verified','human_review','failed','paused','stopped']
+
+
+class AgentRunIn(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:str=Field(pattern=r'^[a-f0-9-]{36}$')
+    tab_id:int=Field(ge=0)
+    url:str=Field(max_length=2000)
+    stage:str=Field(default='',max_length=500)
+    status:Literal['running','paused','stopped','interrupted','human_review','failed','review_ready']
+    steps:int=Field(ge=0,le=100)
+    verified:int=Field(ge=0,le=500)
+    model_calls:int=Field(ge=0,le=5)
+    elapsed_ms:int=Field(ge=0,le=3600000)
+    events:list[AgentEventIn]=Field(default_factory=list,max_length=100)
+
+
+@router.post('/agent/run')
+def save_agent_run(value:AgentRunIn,identifier:str=Depends(authorized)):
+    if not capabilities(value.url)['form_preparation']:raise HTTPException(403,'This site stays manual')
+    parts=urlsplit(value.url)
+    if parts.username or parts.password:raise HTTPException(400,'Credentials in URLs are not permitted')
+    record=value.model_dump()|{'url':parts.scheme+'://'+parts.netloc+parts.path,'at':store.now()}
+    runs=store.get_setting('extension_agent_runs',{})
+    own=[r for r in runs.get(identifier,[]) if r['id']!=record['id']]
+    runs[identifier]=(own+[record])[-20:]
+    store.set_setting('extension_agent_runs',runs)
+    return {'ok':True}
+
+
+@router.get('/agent/run')
+def list_agent_runs(identifier:str=Depends(authorized)):
+    return store.get_setting('extension_agent_runs',{}).get(identifier,[])
 
 
 class FieldIn(BaseModel):
@@ -143,6 +217,7 @@ class FieldIn(BaseModel):
     automation_path:list[str]=Field(default_factory=list,max_length=8)
     phone_prefix:str=Field(default='',pattern=r'^(?:\+\d{1,4})?$')
     selection_required:bool=False
+    selection_confirmed:bool|None=None
     selected_values:list[str]=Field(default_factory=list,max_length=100)
 
 
@@ -197,7 +272,7 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
                 if missing:actions.append({'index':item.index,'token':item.token,'values':missing,'source':'context:verified-skills'})
                 elif inferred_required and not selected:manual.append({'index':item.index,'label':normalize_label(item.label),'type':item.type,'reason':'Add a verified skill or select a choice on the page'})
             continue
-        answered=bool(item.value.strip()) if item.type not in ('checkbox','radio') else item.checked is True or item.group_answered
+        answered=(bool(item.value.strip()) and item.selection_confirmed is not False) if item.type not in ('checkbox','radio') else item.checked is True or item.group_answered
         answer=known_answer(field,profile,answers,context)
         if answer: actions.append({'token':item.token,'index':item.index,'value':answer[0],'source':answer[1]})
         elif inferred_required and (not item.valid or not answered):
@@ -220,7 +295,7 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
             draft=draft_answer(item.label,profile,context,language=value.language,page_language=value.page_language,
                                job_title=value.job_title,company=value.company,job_description=value.job_description)
             if draft: drafts.append(draft|{'index':item.index,'token':item.token,'label':display_label})
-            elif item.type=='select' and item.options:
+            elif item.type in ('select','combobox') and item.options:
                 drafts.append({'index':item.index,'token':item.token,'label':display_label,'value':'','kind':'missing_choice',
                                'optional':not inferred_required,
                                'choices':[o.model_dump() for o in item.options if o.value and not o.disabled],
@@ -233,6 +308,7 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
                 unresolved.append({k:field[k] for k in ('index','label','name','id','type','required','options')})
         if sensitive:
             manual.append({'index':item.index,'label':normalize_label(item.label),'type':item.type,'optional':not inferred_required,
+                           'answered':answered and item.valid,
                            'reason':'Review this personal or legal field on the page; existing site defaults are not verified facts'})
         elif re.search(r'birth|nascita',item.label,re.I) and answered:
             manual.append({'index':item.index,'label':normalize_label(item.label),'type':item.type,'optional':not inferred_required,
@@ -240,11 +316,16 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
         elif inferred_required and excluded and not answered and not answer and not review_choice:
             manual.append({'index':item.index,'label':normalize_label(item.label),'type':item.type,
                            'reason':'Choose a document on the page' if item.type=='file' else 'Complete this control or sensitive question on the page'})
+        elif item.selection_confirmed is False and item.value and not answer:
+            manual.append({'index':item.index,'label':display_label,'type':item.type,'optional':not inferred_required,
+                           'reason':'Typed text is not a committed selection. Choose a matching catalog result on the page'})
         elif inferred_required and answered and not item.valid and not answer:
             manual.append({'index':item.index,'label':normalize_label(item.label),'type':item.type,
                            'reason':'Review the validation error or choose the search result on the page'})
     proposals=[];ai_error=None
+    model_called=False
     if value.use_ai and unresolved:
+        model_called=True
         config=store.get_setting('llm',{})
         try:
             model=DecisionModel.from_settings(config)
@@ -270,7 +351,7 @@ def plan(value:PlanIn,identifier:str=Depends(authorized)):
         if needed>0 and not conflict:structure_actions.append({'token':control.token,'section':control.section,'count':needed})
     event(identifier,value.url,'prepare',f'{len(actions)} known fields; {len(unknown)} unresolved; AI proposals {len(proposals)}')
     return {'snapshot_id':value.snapshot_id,'url':value.url,'actions':actions,'unknown':unknown,
-            'proposals':proposals,'drafts':drafts,'manual':manual,'structure_actions':structure_actions,'ai_error':ai_error,'policy':policy,
+            'proposals':proposals,'drafts':drafts,'manual':manual,'structure_actions':structure_actions,'ai_error':ai_error,'model_called':model_called,'policy':policy,
             'language':response_language(page_language=value.page_language,preferred=value.language),
             'note':'Known facts fill directly. Read and confirm longer answers before they are filled.'}
 
@@ -316,8 +397,8 @@ def reviewed_plan(value:ReviewedPlanIn,identifier:str=Depends(authorized)):
             else:raise HTTPException(400,'Choose Yes or No explicitly')
         else:
             if item.value: raise HTTPException(409,'Field already contains an answer; inspect and edit it on the page')
-            chosen=matching_choice(answer.value,[o.model_dump() for o in item.options]) if item.type=='select' and item.options else None
-            if item.type=='select' and item.options and not chosen:raise HTTPException(400,'Choose an inspected dropdown option')
+            chosen=matching_choice(answer.value,[o.model_dump() for o in item.options]) if item.type in ('select','combobox') and item.options else None
+            if item.type in ('select','combobox') and item.options and not chosen:raise HTTPException(400,'Choose an inspected dropdown option')
             actions.append({'index':item.index,'token':item.token,'value':chosen['label'] if chosen else answer.value,'source':'user-reviewed-answer'})
     # Validate the entire request before persisting any explicitly remembered answer.
     context=store.get_setting('candidate_context',{})
@@ -328,7 +409,7 @@ def reviewed_plan(value:ReviewedPlanIn,identifier:str=Depends(authorized)):
         item=next(f for f in value.fields if f.index==answer.index)
         label=normalize_label(item.group_label if item.type=='radio' else item.label)
         semantic_value=answer.value
-        if item.type in ('select','radio') and item.options:
+        if item.type in ('select','combobox','radio') and item.options:
             semantic_value=matching_choice(answer.value,[o.model_dump() for o in item.options])['label']
         profile=store.get_setting('profile',{})
         reference=answer.fact_id if answer.fact_id in {'profile.'+key for key in store.PROFILE_REFERENCE_FIELDS} else None

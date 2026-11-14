@@ -7,7 +7,7 @@
 [Getting started](docs/USAGE.md) · [Chrome extension](extension/README.md) · [What's new](CHANGELOG.md) · [Verified capabilities](RELEASE_READINESS.md)
 
 [![Tests](https://github.com/ANASS19/ForgeApply/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/ANASS19/ForgeApply/actions/workflows/tests.yml)
-![Preview 0.4.1](https://img.shields.io/badge/preview-0.4.1-8dbbff?labelColor=112742)
+![Preview 0.4.2](https://img.shields.io/badge/preview-0.4.2-8dbbff?labelColor=112742)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-63e1f5?labelColor=112742)
 ![Local first](https://img.shields.io/badge/local--first-human%20review-63e1f5?labelColor=112742)
 
@@ -24,6 +24,7 @@ ForgeApply is a Windows-first application workspace that helps you prepare permi
 | Workflow | Included in this preview |
 |---|---|
 | Keep a reusable profile | Contact details, multiple employment/education records, certifications, languages, skills and EN/IT CVs |
+| Complete supported steps | Bounded observe/plan/act/verify loop, pause/resume, local checkpoints and a visible virtual cursor |
 | Fill an existing Chrome tab | Compact extension, persistent connection, Keep open side panel, reviewed missing answers |
 | Prepare complex forms | Native/custom selects, radio groups, factual checkboxes, dynamic fields, repeated sections, multi-page review |
 | Use your preferred model | Local Ollama, local or hosted OpenAI-compatible endpoints, or deterministic filling without AI |
@@ -52,9 +53,9 @@ Open **http://127.0.0.1:8765**. You can also use `start_windows.bat` after downl
 1. In **Candidate & CVs**, enter verified contact/background facts and upload your documents.
 2. At `chrome://extensions`, enable Developer mode → **Load unpacked** → choose this repository's **extension** folder.
 3. Generate a code in dashboard **AI Settings → Chrome extension**, then enter it once in the assistant. The connection stays saved until disconnected or revoked.
-4. Open a permitted application page. Open ForgeApply, choose **Keep open**, then **Prepare & Fill**.
-5. Enter missing facts and review drafts → **Fill reviewed answers**. Choose a CV using **Attach CV / document**.
-6. Use **Continue to next step** and repeat. Inspect the employer's final review and submit manually if you choose.
+4. Open a permitted application page. Open ForgeApply, choose **Keep open**, then **Complete Application**. It fills verified fields, handles supported page transitions, and pauses when you need to act.
+5. Enter missing facts and review drafts → **Fill reviewed answers**. Choose a CV using **Attach CV / document**, then **Resume application**.
+6. Review personal/legal fields on the website and resume explicitly. The agent stops at final review; submit manually if you choose. **Prepare & Fill this page** remains available for page-by-page control.
 
 Practice first at dashboard `/demo/en` or `/demo/it`; final submission is disabled. The [usage guide](docs/USAGE.md) includes model setup, realistic multi-page practice, upgrades and troubleshooting. [Guida rapida in italiano](docs/USAGE.md#guida-rapida-in-italiano).
 
@@ -70,7 +71,7 @@ The [synthetic benchmark](benchmarks/README.md) found factual errors with both t
 
 Data is stored outside the repository under `%USERPROFILE%\.forgeapply` by default. The server binds to loopback; extension pairing is authenticated. No telemetry is implemented. SQLite, CVs and browser sessions rely on OS permissions and are **not application-encrypted**. Hosted inference can receive candidate facts and page content after opt-in; keep it off for local-only inference.
 
-**91 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, bilingual Workday-style fixtures, an Italian enterprise portal, missing answers, stale controls, pairing and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works.
+**103 tests pass on Windows Python 3.13**, including actual MV3 Chromium workflows, uploads, virtualized Workday-style catalogs, an Italian enterprise portal, pause/resume, replaced controls, ambiguous choices, page errors and final review. CI covers Windows/Ubuntu with Python 3.11/3.13. This is fixture evidence, not proof that every employer portal works. See the [regression evidence](docs/WORKDAY_VERIFICATION.md).
 
 ```powershell
 .venv\Scripts\python.exe -m pytest -q

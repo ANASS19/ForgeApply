@@ -27,7 +27,7 @@ def needs_exact_fact(label:str) -> bool:
 
 def application_specific_question(label:str) -> bool:
     """Referral sources describe this application, not a permanent candidate fact."""
-    return bool(re.search(r'how did.*hear|come.*conosciut|^(?:canale(?: di provenienza)?|fonte|source)$',normalize_label(label),re.I))
+    return bool(re.search(r'how did.*hear|come.*conosciut|come.*trovat.*(?:annuncio|posizione)|^(?:canale(?: di provenienza)?|fonte|source)$',normalize_label(label),re.I))
 
 
 def evidence_catalog(profile:dict,context:dict) -> list[dict]:

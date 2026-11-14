@@ -1,4 +1,4 @@
-# Using ForgeApply 0.4.1
+# Using ForgeApply 0.4.2
 
 [Overview](../README.md) · [Extension details](../extension/README.md) · [Release limitations](../RELEASE_READINESS.md)
 
@@ -70,10 +70,24 @@ The default backend port is 8765. If you deliberately changed it, update the ext
 
 ## Fill an application
 
+### Complete supported steps
+
+Click **Complete Application** for a bounded run. The assistant observes the current page, plans from verified facts, executes a small grounded action, verifies it, and observes again. It supports at most 80 steps, three minutes and three requested model calls per run. The model can choose among at most five offered tools; it cannot create scripts, arbitrary coordinates or applicant facts.
+
+**Pause** and **Stop / take control** take effect at the next safe action boundary. Missing facts, document selection, ambiguous controls, validation and legal declarations cause a human-review pause. Supply the answers or file, then choose **Resume application**. A legal/personal step requires explicit resume after you review its completed controls. Final review is a stopping state, never proof of submission.
+
+Checkpoints are stored locally in Chrome and backend SQLite. Closing/reloading the panel interrupts execution; reopen it and resume explicitly after checking the page. It does not run invisibly after the panel closes. A changed URL, tab, origin or browser permission may require a fresh run. Completed field values and existing record identities prevent duplicate work.
+
+The cyan cursor is a **page overlay**, not the operating system mouse. Browser-level pointer tools are available separately in the managed Playwright Browser Agent. The extension uses semantic targets, native focus/blur, keyboard search, verified catalog selections and bounded menu scrolling.
+
+Under **Agent actions**, Show current screenshot captures only the active authorized application tab. Optional **Allow screenshot reasoning for this run** sends a resized screenshot to the configured model when it is used for tool planning. It defaults off; hosted inference also requires remote consent. Screenshot-derived suggestions still resolve to current DOM tool candidates. Unrestricted visual coordinate clicking and closed-shadow/cross-origin control are not implemented.
+
+### Work on one page
+
 Open a permitted employer application page and sign in manually if needed. ForgeApply does not enter passwords or bypass CAPTCHA.
 
 1. Choose the answer language: Automatic, English or Italiano.
-2. Click **Prepare & Fill**. Known verified facts fill directly. A freshly opened paired panel may inspect the selected page to show a preview, but it does not fill until you request it.
+2. Click **Prepare & Fill this page**. Known verified facts fill directly. A freshly opened paired panel may inspect the selected page to show a preview, but it does not fill until you request it.
 3. Review outstanding answer cards. Required questions are visible; optional answers are collapsed. Enter actual answers, choose the available dropdown options, then **Fill reviewed answers**.
 4. Reusable factual answers are remembered locally by default; disable **Remember verified personal answers locally** when you do not want that. Referral sources stay scoped to the application URL. Prior-employer questions stay specific to the employer/question. Birth answers are not stored as general reusable screening answers.
 5. Use **Attach CV / document** to open the website's native chooser. Choose the correct reviewed file and verify the website attachment. The extension does not attach a local path from your saved profile automatically.
@@ -102,8 +116,8 @@ Start with dashboard `/demo/en` or `/demo/it`, whose final submit controls are d
 | URL | Practice |
 |---|---|
 | `http://127.0.0.1:8766/italian-portal` | Italian source/employer/phone dropdowns, address and personal information |
-| `http://127.0.0.1:8766/workday?actual=1&lang=it` | Five-stage Italian wizard and repeated background records |
-| `http://127.0.0.1:8766/workday?actual=1&lang=en` | Equivalent English wizard |
+| `http://127.0.0.1:8766/workday?actual=1&catalog=1&lang=it` | Five-stage Italian wizard, virtualized catalogs, Enter-to-search references and repeated background records |
+| `http://127.0.0.1:8766/workday?actual=1&catalog=1&lang=en` | Equivalent English wizard |
 | `http://127.0.0.1:8766/controls` | Dynamic controls, custom dropdown and same-origin iframe |
 
 For a test profile isolated from your real information, launch a separate instance with an empty directory **outside the repository** and another port:
@@ -159,9 +173,9 @@ Report a bug with the extension version, browser/OS version, ATS type, sanitized
 2. Inserisci dati verificati e CV in **Candidate & CVs**; salva anche formazione, esperienze, certificazioni e lingue.
 3. In `chrome://extensions`, attiva la modalità sviluppatore e carica la cartella **extension**.
 4. Genera un codice in **AI Settings → Chrome extension** e collega l'assistente una volta. La connessione resta memorizzata.
-5. Apri il modulo consentito, scegli **Keep open**, lingua Italiano, quindi **Prepare & Fill**.
+5. Apri il modulo consentito, scegli **Keep open**, lingua Italiano, quindi **Complete Application**. Per una sola pagina usa **Prepare & Fill this page**.
 6. Completa le risposte mancanti, controlla i testi e premi **Fill reviewed answers**. Seleziona il CV con **Attach CV / document**.
-7. Verifica sul sito dati personali, dichiarazioni e consensi. Premi **Continue to next step** per il passaggio successivo.
+7. Verifica sul sito dati personali, dichiarazioni e consensi. Premi **Resume application** dopo le pause; **Pause** e **Stop / take control** consentono di interrompere l'esecuzione.
 8. Controlla la revisione finale e invia personalmente solo se desideri. L'assistente non deve inventare dati né inviare automaticamente una candidatura.
 
 Questa è una versione di anteprima: i test locali non garantiscono compatibilità con ogni portale aziendale.

@@ -1,10 +1,24 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from forgeapply.llm import DecisionModel, LLMError
 from forgeapply import browser as browser_module
+
+
+def test_ollama_browser_planning_sends_an_allowlisted_json_schema(monkeypatch):
+    received=[];original=httpx.Client
+    def handler(request):
+        received.append(json.loads(request.content))
+        return httpx.Response(200,json={'message':{'content':'{"candidate_id":0,"reason":"Use a verified field"}'}})
+    monkeypatch.setattr(httpx,'Client',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
+    result=DecisionModel().choose_browser_step([{'id':0,'tool':'fill','label':'Verified contact field'}],'My Information',screenshot=b'\xff\xd8\xffSynthetic')
+    assert result['candidate_id']==0
+    assert received[0]['format']['properties']['candidate_id']['enum']==[0]
+    assert received[0]['format']['additionalProperties'] is False
+    assert received[0]['messages'][1]['images']
 
 
 def test_remote_inference_is_opt_in_and_local_compatible_needs_no_key(monkeypatch):

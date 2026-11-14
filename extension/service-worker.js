@@ -1,6 +1,6 @@
 
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(()=>{});
-const WORKER_VERSION='0.4.1';
+const WORKER_VERSION='0.4.2';
 chrome.runtime.onInstalled.addListener(()=>{
   chrome.contextMenus.create({id:'forge-analyze',title:'ForgeApply — Analyze this page',contexts:['page','editable']});
 });
@@ -17,7 +17,7 @@ function policy(url) {
   return {restricted,host};
 }
 async function api(path,method='GET',body) {
-  if(!['/pair','/status','/plan','/jobs','/match','/activity','/answer','/reviewed-plan','/motivation-letter','/cv-draft','/document-pdf','/local-models','/local-model'].includes(path))throw Error('Unsupported bridge operation');
+  if(!['/pair','/status','/plan','/jobs','/match','/activity','/answer','/reviewed-plan','/motivation-letter','/cv-draft','/document-pdf','/local-models','/local-model','/agent/decision','/agent/run'].includes(path))throw Error('Unsupported bridge operation');
   const {pairToken,backendPort=8765}=await chrome.storage.local.get(['pairToken','backendPort']);
   if(!Number.isInteger(Number(backendPort))||backendPort<1024||backendPort>65535)throw Error('Invalid local backend port');
   const BASE='http://127.0.0.1:'+Number(backendPort);
@@ -34,8 +34,9 @@ async function api(path,method='GET',body) {
 }
 async function tabInfo(tabId) {
   const tab=await chrome.tabs.get(tabId);
-  if(!tab.url||!/^https?:\/\//.test(tab.url))throw Error('Authorize an http(s) page using the toolbar or context menu. Browser/internal pages are unsupported.');
-  return {id:tab.id,url:tab.url,...policy(tab.url)};
+  if(!tab.url)throw Object.assign(Error('Backend connected. Page access is needed: click the ForgeApply toolbar icon on this application tab, or use its right-click menu.'),{code:'permission_required'});
+  if(!/^https?:\/\//.test(tab.url))throw Error('Open an application webpage and invoke ForgeApply from its toolbar icon. Browser/internal pages are unsupported.');
+  return {id:tab.id,window_id:tab.windowId,url:tab.url,...policy(tab.url)};
 }
 async function pageCall(tabId,operation,args=[]) {
   const tab=await tabInfo(tabId);if(tab.restricted)throw Error('Native LinkedIn/Indeed inspection and automation are disabled. Import the URL and supply job details manually.');
@@ -44,6 +45,28 @@ async function pageCall(tabId,operation,args=[]) {
     const results=await chrome.scripting.executeScript({target:{tabId},func:async(op,params)=>globalThis.ForgeApplyPage[op](...params),args:[operation,args]});
     if(!results[0]?.result)throw Error('Page inspection returned no state');return results[0].result;
   }catch(error){throw Error(error.message+' If access was revoked, invoke the toolbar or context menu on this tab again.');}
+}
+async function captureCurrentTab(tabId){
+  const current=await tabInfo(tabId);if(current.restricted)throw Error('This platform stays manual.');
+  let changed=false;
+  const activated=info=>{if(info.windowId===current.window_id&&info.tabId!==tabId)changed=true;};
+  const updated=(id,change)=>{if(id===tabId&&change.url&&change.url!==current.url)changed=true;};
+  chrome.tabs.onActivated.addListener(activated);chrome.tabs.onUpdated.addListener(updated);
+  try{
+  const active=(await chrome.tabs.query({active:true,windowId:current.window_id}))[0];
+  if(active?.id!==tabId)throw Error('Activate the authorized application tab before taking its screenshot.');
+  let url=await chrome.tabs.captureVisibleTab(current.window_id,{format:'jpeg',quality:65});
+  const after=(await chrome.tabs.query({active:true,windowId:current.window_id}))[0];
+  if(changed||after?.id!==tabId||after.url!==current.url)throw Error('The authorized tab changed during screenshot capture. Image discarded.');
+  const raw=atob(url.split(',')[1]),mime=url.slice(5,url.indexOf(';'));
+  const bitmap=await createImageBitmap(new Blob([Uint8Array.from(raw,char=>char.charCodeAt(0))],{type:mime}));
+  const scale=Math.min(1,1280/bitmap.width),canvas=new OffscreenCanvas(Math.round(bitmap.width*scale),Math.round(bitmap.height*scale));
+  canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+  const blob=await canvas.convertToBlob({type:'image/jpeg',quality:.65});
+  const bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let start=0;start<bytes.length;start+=8192)binary+=String.fromCharCode(...bytes.subarray(start,start+8192));
+  if(changed)throw Error('The authorized tab changed during screenshot capture. Image discarded.');
+  return {url:'data:image/jpeg;base64,'+btoa(binary),page_url:current.url};
+  }finally{chrome.tabs.onActivated.removeListener(activated);chrome.tabs.onUpdated.removeListener(updated);}
 }
 async function handle(message,sender) {
   if(sender.id!==chrome.runtime.id||!sender.url?.startsWith(chrome.runtime.getURL('panel.html')))throw Error('Only the extension UI may request privileged actions');
@@ -58,6 +81,10 @@ async function handle(message,sender) {
     case 'activity':return api('/activity');
     case 'tab':return tabInfo(message.tabId);
     case 'inspect':return pageCall(message.tabId,'inspect');
+    case 'agent_decision':{const current=await tabInfo(message.tabId);if(current.restricted||current.url!==message.url)throw Error('Page changed; observe again.');const screenshot=message.use_vision&&message.use_ai?(await captureCurrentTab(message.tabId)).url.split(',')[1]:'';return api('/agent/decision','POST',{url:current.url,stage:message.stage,use_ai:message.use_ai,candidates:message.candidates,screenshot});}
+    case 'agent_progress':return api('/agent/run','POST',message.run);
+    case 'agent_history':return api('/agent/run');
+    case 'screenshot':return captureCurrentTab(message.tabId);
     case 'plan': {
       const current=await tabInfo(message.tabId);
       if(current.url!==message.snapshot.url||current.restricted)throw Error('Destination changed or is restricted; analyze again.');

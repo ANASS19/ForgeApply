@@ -12,6 +12,10 @@ Click **Keep open** at the top for Chrome's persistent side panel. Infrequent to
 
 ## Prepare and fill
 
+Version 0.4.2 adds **Complete Application**, a bounded multi-step executor. It observes, selects a validated tool, acts and verifies, then observes again. Pause/Stop preserve page entries; Chrome/backend checkpoints support explicit resume after interruption. It stops for missing facts, file selection, required legal/personal review, server errors and final review. Limits are 80 steps, three minutes and three model requests. Closing the panel interrupts execution; it does not keep running invisibly. See [the usage guide](../docs/USAGE.md#complete-supported-steps).
+
+The cyan cursor is a visual page overlay. Agent actions show section/row/label and verification outcomes. Optional screenshot reasoning defaults off and only sends the active authorized tab to the configured model after enabling it; hosted inference still requires remote consent. Screenshots are resized, and model tool choices remain tied to offered DOM targets. No arbitrary scripts, coordinates or OS mouse control are exposed.
+
 On a permitted employer form, click **Prepare & Fill**. This explicit action inspects the selected page, fills verified facts, and shows editable cards for missing information and longer answers. There is no separate site-permission checkbox. Website policies and the manual final submission remain enforced.
 
 English/Italian labels, including `Nome*Obbligatorio`, and common Workday labels such as `Given Name(s)`, `Family Name`, `Address Line 1` and `Country/Territory` share the deterministic mapper. Native selects, accessible custom dropdowns, searchable comboboxes, radio groups, factual skill checkboxes and same-origin frames are supported. Choices must uniquely match explicit facts; a beginner language level is never guessed into a CEFR level. Existing values and changed controls are protected.
@@ -27,6 +31,8 @@ Changing tabs/destination clears inspected state. Unrelated pages are never insp
 ## Workday-style multi-page workflows
 
 The controlled `/workday?lang=en` and `/workday?lang=it` fixtures cover five stages: personal information, experience/education, application questions, voluntary disclosures and review. Recognized repeated sections can add up to ten verified records per section, then re-inspect before filling. Existing rows match by employer/title or institution; ambiguous or unknown history blocks automatic expansion. Exact dates are required; start months and ongoing employment are not inferred.
+
+Use `/workday?actual=1&catalog=1&lang=it` (or `lang=en`) for the stricter regression fixture. It requires Enter-triggered university/discipline lookups, real committed tokens, virtualized degree/language menus and skills chips. It also verifies education year IDs, language Overall, explicit fluency, rejected oversized CVs and an accepted-file indicator. Ambiguous choices stop; replaced controls are re-observed once. [Evidence and limitations](../docs/WORKDAY_VERIFICATION.md).
 
 Repeated employment, education, certifications and languages are supported in these fixtures, including real Workday-style dynamic input IDs without dedicated record wrappers. Split month/year fields, searchable city choices, read-only dropdowns and skills tags are verified. Known fields revealed during filling receive bounded re-observation and another pass; failed or ambiguous choices remain for review. There is a 100-control inspection limit, and Next is blocked when a page exceeds it. Structured background records can be edited in Candidate & CVs; unverified records, incomplete degrees and planned skills are excluded from automatic filling.
 

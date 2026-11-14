@@ -4,8 +4,9 @@
 <form action="/submit" method="post">
 <fieldset><label>Livello di conoscenza della lingua inglese*Obbligatorio</label>
 <label><input type="radio" name="english" value="A2" required>Elementary (A2)</label>
+<label><input type="radio" name="english" value="B1">Limited working (B1)</label>
 <label><input type="radio" name="english" value="B2">Professional working (B2)</label>
-<label><input type="radio" name="english" value="C1">Full professional working (C1)</label></fieldset>
+<label><input type="radio" name="english" value="C1">Full professional working (C1)</label><label><input type="radio" name="english" value="native">Native or Bilingual</label></fieldset>
 <label>Paese di residenza*<select id="country" required><option value="">Seleziona</option><option value="it">Italia</option><option value="fr">Francia</option></select></label>
 <fieldset><legend>Competenze tecniche</legend><label><input id="skill_python" type="checkbox" value="Python">Python</label><label><input id="skill_unknown" type="checkbox" value="Unknown">UnknownTechnology</label></fieldset>
 <label for="nome">Nome<span>*Obbligatorio</span></label><input id="nome" name="first_name" required>
@@ -16,5 +17,7 @@
 <label>Lettera di motivazione*Obbligatorio<textarea id="motivation" required rows="5"></textarea></label>
 <label>Quanti anni di esperienza con Python?*Obbligatorio<input id="python_years" type="number" required min="0"></label>
 <label>Carica il CV*Obbligatorio<input id="cv" type="file" required accept=".pdf,.docx"></label>
+<label>File aggiuntivi<input id="extra_document" type="file" accept=".pdf,.docx"></label>
 <label><input id="privacy" type="checkbox" required>Accetto il trattamento dei dati e l'informativa privacy</label>
+<label><input id="consent_future_jobs" type="checkbox">Acconsento a essere contattato per opportunità future</label>
 <p><button type="submit">Invia la candidatura</button></p></form></main></html>

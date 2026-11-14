@@ -130,3 +130,15 @@ def test_language_component_and_certification_facts_are_not_inferred():
     context['_form_bindings']=bind_records(fields,context)
     assert known_answer(fields[0],{},[],context) is None
     assert known_answer(fields[1],{},[],context)[0]=='Verified Cert'
+
+
+def test_workday_overall_and_gpa_keep_distinct_scales():
+    context={'languages':{'English':'Advanced / C1'},'education':[{'institution':'Example University','completed':True,'grade':'97/110','start':'2022-10','graduated_at':'2025-11'}]}
+    fields=[{'section':'languages','record_index':0,'label':'Overall*','value':'','type':'combobox'},
+            {'section':'education','record_index':0,'label':'Overall Result (GPA)','value':'','type':'text'}]
+    context['_form_bindings']=bind_records(fields,context)
+    assert known_answer(fields[0],{},[],context)[0]=='Advanced / C1'
+    assert known_answer(fields[1],{},[],context) is None
+    year=fields[1]|{'label':'From Year','automation_id':'dateSectionYear-input'}
+    assert known_answer(year,{},[],context)[0]=='2022'
+    assert known_answer(year|{'label':'To (Actual or Expected)'},{},[],context)[0]=='2025'

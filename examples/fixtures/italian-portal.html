@@ -1,8 +1,9 @@
 <!doctype html><html lang="it"><meta charset="utf-8"><title>Portale italiano - fixture sintetica</title>
-<style>body{font:16px system-ui;max-width:780px;margin:30px auto;padding:20px;background:#0b1220;color:#dfebff}label{display:block;margin:18px 0}input,select{display:block;width:95%;padding:9px}button{padding:12px}.error{color:#ffad86}</style>
+<style>body{font:16px system-ui;max-width:780px;margin:30px auto;padding:20px;background:#0b1220;color:#dfebff}label{display:block;margin:18px 0}input,select{display:block;width:95%;padding:9px}button{padding:12px}.error{color:#ffad86}[hidden]{display:none!important}</style>
 <main><h1>Modulo di candidatura - esempio locale</h1><p>Nessuna candidatura reale. Dati sintetici.</p>
 <form id="application" onsubmit="event.preventDefault();advance()">
 <div role="group" aria-label="Stai candidandoti per -">
+<label id="sourceTypeLabel" hidden>Come hai trovato questo annuncio?*<select id="sourceType"><option value="">Seleziona</option><option value="social">Social Media</option><option value="site">Website</option></select></label>
 <label>Curriculum Vitae<input type="file" accept=".pdf,.docx"></label>
 <label>Canale*<select id="applicantSource" required><option value="">Seleziona</option><option value="source-7">LinkedIn</option><option value="source-9">Sito aziendale</option></select></label>
 <label>Hai mai lavorato per Synthetic Employer, per uno dei nostri brand, o per una delle nostre precedenti entità giuridiche?*<select id="haveYouWorkedForEmployer" required><option value="">Seleziona</option><option value="previous-1">Sì</option><option value="previous-0">No</option></select></label>
@@ -35,4 +36,4 @@
 <label>Ulteriori nazionalità<input id="additionalNationality"></label>
 <label>Disabilità<select id="disabilityIdentity"><option value="">Seleziona</option><option>Preferisco non rispondere</option></select></label>
 </div><p class="error" role="alert"></p><button type="submit">Avanti</button></form></main>
-<script>let saves=0;function advance(){saves++;document.querySelector('main').innerHTML='<h1>Revisione</h1><p>Verifica i dati. Nessuna candidatura inviata.</p><button disabled>Invia candidatura</button>';}</script></html>
+<script>let saves=0;if(new URLSearchParams(location.search).has('hierarchy')){const source=document.querySelector('#applicantSource');source.parentElement.hidden=true;source.required=false;document.querySelector('#sourceTypeLabel').hidden=false;document.querySelector('#sourceType').required=true;document.querySelector('#sourceType').onchange=()=>{source.parentElement.hidden=false;source.required=true;};}function advance(){saves++;document.querySelector('main').innerHTML='<h1>Revisione</h1><p>Verifica i dati. Nessuna candidatura inviata.</p><button disabled>Invia candidatura</button>';}</script></html>

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2 — Agent and Workday regression preview · 2026-11-14
+
+- Add Complete Application: a short-horizon observe/plan/act/verify loop with 80-step, three-minute and three-model-call bounds. Supported steps advance automatically; unknown facts, documents, validation, legal review and final review stop for the user.
+- Add pause/stop/resume, Chrome/backend checkpoints, human-readable action traces, and safe recovery after a panel reload. The page cursor overlay shows targets; it does not move the OS pointer.
+- Fix Enter-triggered catalog queries, scoped portal menus, bounded virtual-list scrolling, actual committed-chip verification, and one retry for replaced controls.
+- Map education year IDs and language Overall; preserve original grading scales and require explicit GPA. Verify skills as tags and distinguish file rejection from selection.
+- Keep the side panel bound to its application tab when its own UI receives focus. Distinguish page permission from backend connection.
+- Add allowlisted model tool choices, strict Ollama JSON schemas, optional resized screenshot reasoning and local screenshot preview. Vision defaults off; hosted consent and live DOM guards still apply.
+- Expand the synthetic Workday fixture and Italian/HRM forms using read-only public inspection, screenshots and captured control metadata. Add ambiguous, rerender, server-error, source-dependency, upload and final-review regressions.
+- Validation: 103 local tests, real EN/IT Chromium run-to-review evidence, both installed Qwen models exercised with small synthetic text/vision probes, and private profile/database/pairing preservation checks. No real employer application submitted.
+
+See [regression evidence](docs/WORKDAY_VERIFICATION.md), [usage](docs/USAGE.md) and [release limitations](RELEASE_READINESS.md). This is a supervised development preview, not universal Workday compatibility.
+
 ## 0.4.1 — Development preview · 2026-11-14
 
 This source release combines the local browser-executor foundation, paired Chrome assistant, bilingual form preparation and enterprise-form regressions. It is intended for supervised evaluation, not a claim of universal ATS compatibility.

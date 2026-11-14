@@ -97,7 +97,7 @@ def _choice_key(value:str) -> str:
     if cefr:return 'cefr:'+cefr[1]
     aliases={'italy':'italia','it':'italia','mi':'milano','english':'inglese','italian':'italiano','french':'francese','arabic':'arabo','beginner':'principiante','advanced':'avanzato','native':'madrelingua','native or bilingual':'madrelingua','yes':'true','si':'true','sì':'true','on':'true','1':'true',
              'no':'false','off':'false','0':'false',"master's degree":'masters','laurea magistrale':'masters',
-             "bachelor's degree":'bachelors','laurea triennale':'bachelors'}
+             'master degree':'masters','masters degree':'masters',"bachelor's degree":'bachelors','bachelor degree':'bachelors','bachelors degree':'bachelors','laurea triennale':'bachelors'}
     return aliases.get(value,value)
 
 
@@ -163,15 +163,15 @@ def record_answer(field:dict,context:dict) -> tuple[str,str]|None:
     if row is None or field.get('value') or field.get('cross_origin') or field.get('type') in ('file','password','checkbox','radio'):return None
     index=context.get('_form_bindings',{}).get((section,row))
     if index is None:return None
-    record=record_data(context,section,index);label=normalize_label(field.get('label',''))
+    record=record_data(context,section,index);label=re.sub(r'\s*\((?:actual or expected|effettivo o previsto)\)\s*$','',normalize_label(field.get('label','')),flags=re.I)
     remembered=record.get('form_answers',{}).get(record_question_key(label))
     if isinstance(remembered,dict) and remembered.get('value'):return remembered['value'],f'context:{section}.{index}.reviewed_answer'
     patterns=({'title':r'job title|role|ruolo|qualifica','employer':r'company|employer|azienda|datore di lavoro',
                'summary':r'role description|job description|description|descrizione(?: del ruolo)?',
                'location':r'location|sede|localit[aà]'} if section=='experience' else
               {'institution':r'school or university|school|university|istituto|universit[aà]|scuola o universit[aà]',
-               'degree':r'field of study|major|area di studio|corso di studi','grade':r'overall result.*|voto(?: finale)?','gpa':r'gpa|grade point average'} if section=='education' else
-              {'name':r'language|lingua','level':r'(?:overall )?(?:proficiency|level)|livello(?: generale)?',
+               'degree':r'field of study|major|area di studio|corso di studi','grade':r'overall result(?!.*\bgpa\b).*|voto(?: finale)?','gpa':r'gpa|grade point average|overall result\s*\(gpa\)'} if section=='education' else
+              {'name':r'language|lingua','level':r'overall|(?:overall )?(?:proficiency|level)|livello(?: generale)?',
                'speaking':r'speaking|orale|parlato','reading':r'reading|lettura','writing':r'writing|scrittura','comprehension':r'comprehension|comprensione'} if section=='languages' else
               {'name':r'certification|certification name|certificate|certificazione|nome certificazione',
                'issuer':r'issuer|issued by|issuing organization|ente(?: certificatore)?','credential_id':r'credential id|certification number|numero certificazione',
@@ -191,6 +191,7 @@ def record_answer(field:dict,context:dict) -> tuple[str,str]|None:
         date=str(date)
         if re.fullmatch(r'\d{4}(?:-\d{2}(?:-\d{2})?)?',date):
             if re.search(r'year|anno',label,re.I):date=date[:4]
+            elif field.get('automation_id')=='dateSectionYear-input':date=date[:4]
             elif re.search(r'month|mese',label,re.I):
                 if len(date)<7:return None
                 date=str(int(date[5:7]))
@@ -204,7 +205,7 @@ def record_answer(field:dict,context:dict) -> tuple[str,str]|None:
 
 
 def record_question_key(label:str) -> str:
-    clean=normalize_label(label)
+    clean=re.sub(r'\s*\((?:actual or expected|effettivo o previsto)\)\s*$','',normalize_label(label),flags=re.I)
     for prefix,pattern in [('start',r'from|start(?: date)?|data (?:di )?inizio'),('end',r'to|end(?: date)?|data (?:di )?fine|graduation')]:
         match=re.fullmatch(rf'(?:{pattern})(?: (month|year|mese|anno))?',clean,re.I)
         if match:return prefix+'_'+({'month':'month','mese':'month','year':'year','anno':'year'}.get((match[1] or '').lower(),'date'))
@@ -230,6 +231,9 @@ def known_answer(field:dict,profile:dict,answers:list[dict],context:dict|None=No
         elif fact and field.get('selection_required') and _choice_key(fact[0])==_choice_key(field['value']):return fact
     if field.get('section') in ('experience','education','languages','certifications'):
         if sensitive_field(field):return None
+        if field.get('value') and field.get('selection_required') and not field.get('valid',True):
+            fact=record_answer(field|{'value':''},context)
+            if fact and _choice_key(fact[0])==_choice_key(field['value']):return fact
         if typ=='radio':
             if field.get('checked') or field.get('group_answered'):return None
             fact=record_answer(field|{'label':field.get('group_label',''),'value':'','type':'text'},context)
@@ -240,11 +244,14 @@ def known_answer(field:dict,profile:dict,answers:list[dict],context:dict|None=No
             index=context.get('_form_bindings',{}).get((field['section'],field.get('record_index')))
             if index is None:return None
             record=record_data(context,field['section'],index);label=normalize_label(field.get('label',''))
+            remembered=record.get('form_answers',{}).get(record_question_key(label),{}).get('value')
+            if remembered in ('true','false'):return remembered,'context:reviewed-record-choice'
             if field['section']=='experience' and re.fullmatch(r'I currently work here|attualmente lavoro qui',label,re.I) and record.get('currently_work_here') is True:return 'true','context:current-employment-explicit'
             if field['section']=='languages' and re.fullmatch(r'native|mother tongue|madrelingua',label,re.I) and (record.get('native') is True or re.search(r'\bnative\b|madrelingua',record.get('level',''),re.I)):return 'true','context:explicit-native-language'
+            if field['section']=='languages' and re.fullmatch(r'I am fluent in this language\.?|parlo fluentemente questa lingua\.?',label,re.I) and (record.get('fluent') is True or re.fullmatch(r'fluent|fluente',record.get('level',''),re.I)):return 'true','context:explicit-fluent-language'
             return None
         fact=record_answer(field,context)
-        if fact and typ=='select' and field.get('options'):
+        if fact and typ in ('select','combobox') and field.get('options'):
             option=matching_choice(fact[0],field['options'])
             return (option['label'],fact[1]) if option else None
         return fact

@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>Workday-style local practice</title>
 <style>body{font:15px Arial;background:#f3f4f6;color:#172437;max-width:850px;margin:30px auto;padding:20px}main{background:white;padding:30px}label{display:block;margin:12px 0}input,select,textarea,button{padding:9px;font:inherit}input:not([type=radio]):not([type=checkbox]),textarea{display:block;min-width:60%}fieldset,[data-automation-id^=workExperience-],[data-automation-id^=education-]{border:1px solid #ccd3df;padding:15px;margin:12px 0}[role=option]{padding:12px;cursor:pointer}nav{display:flex;gap:16px;margin:18px 0}[aria-current=step]{font-weight:bold;color:#325fbc}</style>
 <main></main><script>
-const it=new URLSearchParams(location.search).get('lang')==='it',actual=new URLSearchParams(location.search).get('actual')==='1';document.documentElement.lang=it?'it':'en';let recordCounter=16;
+const it=new URLSearchParams(location.search).get('lang')==='it',actual=new URLSearchParams(location.search).get('actual')==='1',catalog=new URLSearchParams(location.search).has('catalog');document.documentElement.lang=it?'it':'en';let recordCounter=16;
 const t=(en,italian)=>it?italian:en;
 let step=0,saves=0;const saved=[];
 const stages=['My Information','My Experience','Application Questions','Voluntary Disclosures','Review'];
@@ -37,9 +37,52 @@ function addRecord(section){
  section==='languages'?`<label>${t('Language','Lingua')}*<select required><option value="">Choose</option><option value="en">English</option><option value="it">Italian</option></select></label><label>${t('Overall proficiency','Livello generale')}*<select required><option value="">Choose</option><option>Advanced / C1</option><option>Beginner</option></select></label>`:
  input('certification'+n,'Certification','Certificazione')+input('issuer'+n,'Issuing organization','Ente certificatore');
  if(actual){let unnamed=0;for(const field of row.querySelectorAll('input,textarea,select'))if(!field.id){let suffix=field.name||'value'+(++unnamed);if(/^company/.test(suffix))suffix='companyName';else if(/^title/.test(suffix))suffix='jobTitle';field.id=prefix+'--'+suffix;}}
- root.append(row);
+ root.append(row);if(catalog)catalogize(row,section,n,prefix);
+}
+// Catalog variant: portal-rendered virtual lists and Enter-to-search references, not native selects.
+function catalogPopup(owner,choices,commit,virtual=false){
+ let portal=document.querySelector('#catalogPortal');if(!portal){portal=document.createElement('div');portal.id='catalogPortal';portal.setAttribute('role','listbox');document.body.append(portal);}
+ portal.hidden=false;portal.style.cssText='position:relative;background:white;border:1px solid #789;max-height:96px;overflow-y:auto;margin:10px;padding:0';portal.replaceChildren();
+ const contents=document.createElement('div');contents.style.cssText='position:relative;height:'+(choices.length*32)+'px';portal.append(contents);
+ const render=()=>{contents.replaceChildren();const first=virtual?Math.floor(portal.scrollTop/32):0,last=virtual?Math.min(choices.length,first+3):choices.length;
+  for(let i=first;i<last;i++){const option=document.createElement('div');option.setAttribute('role','option');option.textContent=choices[i];option.style.cssText='box-sizing:border-box;position:absolute;top:'+(i*32)+'px;height:32px;padding:6px;width:100%';option.onclick=()=>{commit(choices[i]);portal.hidden=true;owner.setAttribute('aria-expanded','false');};contents.append(option);}};
+ portal.onscroll=render;portal.scrollTop=0;render();owner.setAttribute('aria-expanded','true');
+}
+function referenceField(input,choices){
+ if(input.required)input.setAttribute('aria-required','true');
+ const wrapper=document.createElement('div');wrapper.dataset.automationId='multiSelectContainer';input.replaceWith(wrapper);wrapper.append(input);input.setAttribute('aria-controls','catalogPortal');
+ input.oninput=()=>{input.setCustomValidity(input.value?'Choose a catalog suggestion':'');};
+ input.onkeydown=event=>{if(event.key==='Escape'){document.querySelector('#catalogPortal')?.setAttribute('hidden','');return;}if(event.key!=='Enter')return;event.preventDefault();
+  if(new URLSearchParams(location.search).has('rerender')&&!window.didSwap){window.didSwap=true;const replacement=input.cloneNode();replacement.value='';input.replaceWith(replacement);referenceField(replacement,choices);return;}
+  const query=input.value.toLowerCase();let matches=choices.filter(v=>v.toLowerCase().includes(query));if(new URLSearchParams(location.search).has('ambiguous')&&matches.length===1)matches=[...matches,...matches];
+  setTimeout(()=>catalogPopup(input,matches,chosen=>{const chip=document.createElement('span');chip.dataset.automationId='selectedItem';chip.textContent=chosen;wrapper.querySelector('[data-automation-id=selectedItem]')?.remove();wrapper.prepend(chip);input.value='';input.required=false;input.setCustomValidity('');input.dispatchEvent(new Event('change',{bubbles:true}));}),120);};
+}
+function buttonField(select,choices,id){
+ const button=document.createElement('button');button.type='button';button.id=id;button.setAttribute('role','combobox');button.setAttribute('aria-controls','catalogPortal');button.setAttribute('aria-required','true');button.textContent='Select One';
+ button.onclick=()=>catalogPopup(button,choices,chosen=>{button.dataset.value=chosen;button.textContent=chosen;},true);
+ button.onkeydown=event=>{if(event.key==='Escape')document.querySelector('#catalogPortal')?.setAttribute('hidden','');};select.replaceWith(button);return button;
+}
+function catalogize(row,section,n,prefix){
+ if(section==='education'){
+  const school=row.querySelector('[name=school'+n+']');school.id=prefix+'--school';referenceField(school,['First University','Second University','Other']);
+  buttonField(row.querySelector('select'),['None','Other','High School Diploma/GED','Technical Diploma','Associate Degree','Bachelor Degree','Master Degree'],prefix+'--degree');
+  const study=row.querySelector('[name=study'+n+']');study.id=prefix+'--fieldOfStudy';study.required=true;referenceField(study,['Computer Science','Mathematics','Other']);
+  for(const fieldset of row.querySelectorAll('fieldset')){const start=fieldset.querySelector('[name^=start]')!==null;fieldset.innerHTML='<label>'+t('Year','Anno')+'<input name="'+(start?'from':'to')+n+'" id="'+prefix+'--'+(start?'firstYearAttended':'lastYearAttended')+'-dateSectionYear-input" data-automation-id="dateSectionYear-input" pattern="[0-9]{4}"></label>';}
+  row.insertAdjacentHTML('beforeend','<label>Overall Result (GPA)<input name="gpa'+n+'"></label>');
+ }
+ if(section==='languages'){
+  const selects=row.querySelectorAll('select');buttonField(selects[0],['Afrikaans','Albanian','Amharic','Arabic','English','French','German','Italian'],prefix+'--language');
+  selects[1].parentElement.firstChild.textContent=t('Overall*','Livello generale*');buttonField(selects[1],['Beginner','Native','Fluent','Advanced / C1'],prefix+'--overall');
+  row.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="'+prefix+'--native">I am fluent in this language.</label>');
+ }
+ if(section==='experience'&&n===1){
+  const skills=document.querySelector('#skills--skills');skills.oninput=()=>{document.querySelector('#skillOptions').textContent='No items. Press Enter to search.';};skills.onclick=()=>{};
+  skills.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();setTimeout(()=>searchSkills(skills),100);}if(event.key==='Escape')document.querySelector('#skillOptions').hidden=true;};
+  const file=document.querySelector('[name=cv]');file.accept='.pdf,.docx';file.onchange=()=>{const valid=file.files[0]&&file.files[0].size<=5*1024*1024&&/\.(pdf|docx)$/i.test(file.files[0].name);file.setCustomValidity(valid?'':'Upload rejected: PDF/DOCX, maximum 5 MB');let status=document.querySelector('#uploadStatus');if(!status){status=document.createElement('p');status.id='uploadStatus';status.setAttribute('role','status');file.after(status);}status.textContent=valid?'Upload accepted: '+file.files[0].name:'Upload rejected';};
+ }
 }
 function advance(){
+ if(catalog&&[...document.querySelectorAll('button[aria-required=true]')].some(e=>!e.dataset.value))return;
  if(step===0&&(!document.querySelector('[aria-controls=sources]').dataset.value||!document.querySelector('[aria-controls=provinces]').dataset.value))return;
  saved.push(Object.fromEntries(new FormData(document.querySelector('form'))));saves++;step++;show();
 }

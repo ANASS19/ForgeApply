@@ -1,10 +1,10 @@
 const $=id=>document.getElementById(id);
-let tabId=null,tab=null,snapshot=null,plan=null,busy=false,paired=false;
+let tabId=null,tab=null,snapshot=null,plan=null,busy=false,paired=false,targetWindowId=null,pendingTab=null;
 let documentKind='letter';
 const edits=new Map();
 async function send(type,data={}) {
   const result=await chrome.runtime.sendMessage({type,...data});
-  if(type==='status'&&result?.ok&&result.worker_version!=='0.4.1')throw Object.assign(Error('Click Reload assistant below, then reopen ForgeApply. Your pairing will stay saved.'),{code:'extension_update_required'});
+  if(type==='status'&&result?.ok&&result.worker_version!=='0.4.2')throw Object.assign(Error('Click Reload assistant below, then reopen ForgeApply. Your pairing will stay saved.'),{code:'extension_update_required'});
   if(!result?.ok){
     const detail=result?.error==='Unknown extension request'?'Reload ForgeApply at chrome://extensions, then reopen this panel. The background worker is an older version.':result?.error||'Reopen the extension to reconnect.';
     throw Object.assign(Error(detail),{code:result?.error_code});
@@ -13,8 +13,9 @@ async function send(type,data={}) {
 }
 function actions() {
   document.querySelectorAll('button').forEach(b=>b.disabled=busy);
+  if(globalThis.ForgeApplyAgent?.running)for(const id of ['agentPause','agentStop'])$(id).disabled=false;
   if(busy)return;
-  for(const id of ['fill','analyze'])$(id).disabled=!paired||!tab||tab.restricted;
+  for(const id of ['fill','analyze','runAgent','showScreenshot'])$(id).disabled=!paired||!tab||tab.restricted;
   for(const id of ['letter','cv','saveJob','match','manualAnswer','useModel'])$(id).disabled=!paired;
   $('applyReviewed').disabled=!paired||!plan?.drafts?.length;
   $('chooseFile').disabled=!snapshot?.fields.some(f=>f.type==='file');
@@ -24,11 +25,12 @@ function button(id,handler) {
   $(id).addEventListener('click',async()=>{
     if(busy)return;busy=true;actions();$('error').textContent='';
     try{await handler();}catch(error){$('summary').textContent='Action stopped. Your page entries were preserved.';$('error').textContent=error.message;if(error.code==='pair_required'){paired=false;$('pairSetup').hidden=false;}if(error.code==='extension_update_required')$('reloadAssistant').hidden=false;}
-    finally{busy=false;actions();}
+    finally{busy=false;actions();if(pendingTab!==null){const id=pendingTab;pendingTab=null;await current(id);}}
   });
 }
 function reset() {
   snapshot=null;plan=null;edits.clear();$('fields').textContent='';
+  $('agentScreenshot').hidden=true;$('agentScreenshot').removeAttribute('src');
   for(const key of ['title','company','location','description','originUrl'])$(key).value='';
   for(const id of ['reviewArea','manualTasks','uploadArea','next','letterArea'])$(id).hidden=true;
   $('summary').textContent='Ready when you are.';actions();
@@ -40,7 +42,7 @@ async function status() {
   const {pairToken}=await chrome.storage.local.get('pairToken');$('pairSetup').hidden=!!pairToken;
   try {
     const state=await send('status');paired=true;$('pairSetup').hidden=true;
-    if(state.bridge_version!=='0.4.1')throw Object.assign(Error('Restart the local ForgeApply backend to load the matching version. Your pairing stays saved.'),{code:'backend_update_required'});
+    if(state.bridge_version!=='0.4.2')throw Object.assign(Error('Restart the local ForgeApply backend to load the matching version. Your pairing stays saved.'),{code:'backend_update_required'});
     $('connection').textContent='Connected locally | '+state.model;
     $('documents').textContent=Object.entries(state.documents).map(([lang,d])=>lang.toUpperCase()+': '+(d.available?d.filename:'not configured')).join(' | ');
     $('pairCode').value='';
@@ -55,7 +57,8 @@ async function status() {
 async function current(id) {
   reset();tabId=id;
   try {
-    tab=await send('tab',{tabId});$('site').textContent=tab.url;
+    tab=await send('tab',{tabId});targetWindowId=tab.window_id;$('site').textContent=tab.url;
+    if(!tab.restricted)await chrome.storage.session.set({lastAuthorizedTab:tabId});
     $('policy').textContent=tab.restricted?'This platform stays manual. Paste job details under More options for answers and a letter.':'';
   }catch(error){tab=null;$('site').textContent=error.message;}
   actions();
@@ -118,13 +121,13 @@ async function fillPlan(prepared,depth=0,verified=0) {
   const result=await send('fill',{tabId,plan:prepared,site_authorized:true});
   adopt(result.snapshot);await prepare(false);
   const progressed=before!==JSON.stringify(snapshot.fields.map(f=>[f.label,f.id,f.section,f.record_index,f.value,f.checked]));
-  const retryable=result.errors.length&&result.errors.every(e=>/^Control changed/.test(e.error));
+  const retryable=result.errors.length&&result.errors.every(e=>e.code==='CONTROL_CHANGED'||/^Control changed/.test(e.error));
   verified+=result.filled.length;
-  if(depth<4&&((result.structure_changed&&!result.errors.length)||(progressed&&result.filled.length&&(!result.errors.length||retryable)&&(plan.actions.length||retryable))))return fillPlan(plan,depth+1,verified);
+  if(depth<4&&((retryable&&depth<1)||(result.structure_changed&&!result.errors.length)||(progressed&&result.filled.length&&(!result.errors.length||retryable)&&(plan.actions.length||retryable))))return fillPlan(plan,depth+1,verified);
   for(const d of plan.drafts){const old=previous?.drafts?.find(o=>questionKey(o)===questionKey(d));if(old?.kind==='model_proposal'&&d.kind==='missing_fact')Object.assign(d,old,{index:d.index,token:d.token});}
   renderPlan();
-  $('summary').textContent=`${verified} ${verified===1?'field':'fields'} verified. ${plan.drafts.length} ${plan.drafts.length===1?'answer':'answers'} to review.`;
-  if(result.errors.length)$('error').textContent=result.errors.map(e=>`Field ${e.index}: ${e.error}`).join('\n');
+  $('summary').textContent=`${verified} ${verified===1?'field':'fields'} verified. ${snapshot.fields.length} controls detected; ${plan.drafts.length} ${plan.drafts.length===1?'answer':'answers'} to review.`;
+  if(result.errors.length)$('error').textContent=result.errors.map(e=>`${e.label||'Application page'}: ${e.error}`).join('\n');
   return result;
 }
 button('pair',async()=>{await send('pair',{code:$('pairCode').value,port:Number($('backendPort').value)});dashboard($('backendPort').value);await status();});
@@ -186,9 +189,16 @@ button('useModel',async()=>{await send('choose_model',{model:$('localModel').val
 $('settingsToggle').addEventListener('click',()=>{$('advanced').open=!$('advanced').open;});
 $('advanced').addEventListener('toggle',async()=>{if($('advanced').open&&paired){await models();try{$('activity').textContent=(await send('activity')).map(e=>e.action+': '+e.detail).join('\n');}catch(error){$('error').textContent=error.message;}}});
 $('language').addEventListener('change',async()=>{edits.clear();await chrome.storage.local.set({answerLanguage:$('language').value});if(snapshot&&!busy){busy=true;actions();try{await prepare(false);}catch(error){$('error').textContent=error.message;}finally{busy=false;actions();}}});
-$('sidepanel').addEventListener('click',()=>{if(tabId)chrome.sidePanel.open({tabId}).catch(error=>$('error').textContent=error.message);});
+$('sidepanel').addEventListener('click',()=>{if(tabId){chrome.storage.session.set({requestedTab:tabId});chrome.sidePanel.open({tabId}).catch(error=>$('error').textContent=error.message);}});
 $('reloadAssistant').addEventListener('click',()=>chrome.runtime.reload());
-chrome.tabs.onActivated.addListener(async info=>{if(!new URLSearchParams(location.search).has('tab'))await current(info.tabId);});
+chrome.tabs.onActivated.addListener(async info=>{
+  if(new URLSearchParams(location.search).has('tab')||targetWindowId!==null&&info.windowId!==targetWindowId)return;
+  if(info.tabId===tabId)return;
+  const candidate=await chrome.tabs.get(info.tabId).catch(()=>null);
+  if(!candidate||candidate.url?.startsWith(chrome.runtime.getURL('')))return;
+  if(busy){pendingTab=info.tabId;return;}
+  await current(info.tabId);
+});
 chrome.tabs.onUpdated.addListener((id,change)=>{
   if(id===tabId&&change.url){
     if(busy){if(tab)tab.url=change.url;$('site').textContent=change.url;}
@@ -201,9 +211,9 @@ chrome.storage.onChanged.addListener((changes,area)=>{if(area==='session'&&chang
   const {backendPort=8765,answerLanguage='auto',aiMode=true}=await chrome.storage.local.get(['backendPort','answerLanguage','aiMode']);
   $('backendPort').value=backendPort;$('language').value=answerLanguage;$('aiMode').checked=aiMode;dashboard(backendPort);
   const explicit=new URLSearchParams(location.search).get('tab');
-  const {requestedTab,pendingInspection}=await chrome.storage.session.get(['requestedTab','pendingInspection']);
+  const {requestedTab,pendingInspection,lastAuthorizedTab}=await chrome.storage.session.get(['requestedTab','pendingInspection','lastAuthorizedTab']);
   const active=(await chrome.tabs.query({active:true,currentWindow:true}))[0];
-  await current(explicit?Number(explicit):requestedTab||active?.id);
+  await current(explicit?Number(explicit):requestedTab||(active?.url?.startsWith(chrome.runtime.getURL(''))?lastAuthorizedTab:active?.id));
   if(pendingInspection?.tabId===tabId){if(pendingInspection.snapshot)adopt(pendingInspection.snapshot,true);else $('error').textContent=pendingInspection.error;}
   await chrome.storage.session.remove(['requestedTab','pendingInspection']);await status();
   if(paired&&tab&&!tab.restricted){

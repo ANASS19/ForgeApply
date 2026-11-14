@@ -1,14 +1,21 @@
 // Runs only in Chrome's isolated world after an explicit extension action.
 (() => {
-  const VERSION='bilingual-forms-4';
+  const VERSION='workday-catalog-5';
   if (globalThis.ForgeApplyPage?.version===VERSION) return;
   const refs = new Map();
+  const observedChoices=new WeakMap();
+  function pointAt(element){
+    element.scrollIntoView({block:'center'});
+    const doc=element.ownerDocument,r=element.getBoundingClientRect();let cursor=doc.getElementById('forgeapply-cursor');
+    if(!cursor){cursor=doc.createElement('div');cursor.id='forgeapply-cursor';cursor.setAttribute('aria-hidden','true');cursor.style.cssText='position:fixed;width:18px;height:18px;border:2px solid #63e1f5;border-radius:50%;background:#63e1f533;pointer-events:none;z-index:2147483647;transition:left .12s,top .12s,opacity .15s';doc.documentElement.append(cursor);}
+    cursor.style.left=(r.left+Math.min(r.width/2,40)-9)+'px';cursor.style.top=(r.top+r.height/2-9)+'px';cursor.style.opacity='1';clearTimeout(cursor.hideTimer);cursor.hideTimer=setTimeout(()=>cursor.style.opacity='0',700);
+  }
   let snapshot = null;
   const visible = e => { const r=e.getBoundingClientRect(); return r.width>0&&r.height>0; };
   // Yield to controlled-input handlers without waiting for background-tab animation frames.
   const settleDOM=()=>new Promise(resolve=>{const channel=new MessageChannel();channel.port1.onmessage=()=>{channel.port1.close();channel.port2.close();resolve();};channel.port2.postMessage(null);});
   function label(e) {
-    const clean = node => { if(!node)return ''; const copy=node.cloneNode(true);copy.querySelectorAll('input,select,textarea,button,[role=alert],[data-automation-id=errorMessage],.field-error,.error-message').forEach(x=>x.remove());return copy.textContent.trim(); };
+    const clean = node => { if(!node)return ''; const copy=node.cloneNode(true);copy.querySelectorAll('input,select,textarea,button,[role=alert],[role=listbox],[data-automation-id=selectedItem],[data-automation-id=selectedItemLabel],[data-automation-id=errorMessage],.field-error,.error-message').forEach(x=>x.remove());return copy.textContent.trim(); };
     return (clean(e.labels?.[0])||e.getAttribute('aria-label')||(e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>e.ownerDocument.getElementById(id)?.textContent||'').join(' ').trim()||e.getAttribute('placeholder')||e.closest('fieldset')?.querySelector('legend')?.textContent||'').slice(0,500);
   }
   const markedRequired = text => /(?:[*＊]+\s*(?:(?:campo\s+)?(?:obbligatori[oa]|required|mandatory|obligatoire))?|[\[(]\s*(?:campo\s+)?(?:obbligatori[oa]|required|mandatory|obligatoire)\s*[\])])\s*[:.]*\s*$/i.test(text);
@@ -22,7 +29,7 @@
     return [...new Set(nodes.map(node=>{const copy=node.cloneNode(true);copy.querySelectorAll('button,svg,[aria-hidden=true]').forEach(n=>n.remove());return copy.textContent.trim();}).filter(Boolean))];
   }
   const navigationName = name => /^(Next|Continue|Review|Save (?:and|&) Continue|Avanti|Continua|Rivedi|Salva e (?:continua|prosegui))$/i.test(name.trim());
-  const choiceKey = text => {const clean=text.trim().toLowerCase(),cefr=clean.match(/\b([abc][12])\b/);return cefr?'cefr:'+cefr[1]:({italy:'italia',it:'italia',milan:'milano',mi:'milano'})[clean]||clean;};
+  const choiceKey = text => {const clean=text.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase(),cefr=clean.match(/\b([abc][12])\b/);return cefr?'cefr:'+cefr[1]:({italy:'italia',it:'italia',milan:'milano',mi:'milano',"master's degree":'masters','master degree':'masters','masters degree':'masters','laurea magistrale':'masters',"bachelor's degree":'bachelors','bachelor degree':'bachelors','bachelors degree':'bachelors','laurea triennale':'bachelors'})[clean]||clean;};
   const value = e => {
     if(e.type==='password')return '';
     if(e.tagName==='SELECT'&&/^(?:choose|select(?: one)?|scegli|seleziona)(?:\s*\.\.\.)?$/i.test(e.selectedOptions[0]?.text.trim()||''))return '';
@@ -82,8 +89,8 @@
     return {};
   }
   function contextualLabel(e){
-    const date=e.id.match(/--(startDate|endDate|issueDate|expirationDate)-dateSection(Month|Year)-input$/);
-    return date?({startDate:'From',endDate:'To',issueDate:'Issue',expirationDate:'Expiry'})[date[1]]+' '+date[2]:label(e);
+    const date=e.id.match(/--(startDate|endDate|firstYearAttended|lastYearAttended|issueDate|expirationDate)-dateSection(Month|Year)-input$/);
+    return date?({startDate:'From',endDate:'To',firstYearAttended:'From',lastYearAttended:'To',issueDate:'Issue',expirationDate:'Expiry'})[date[1]]+' '+date[2]:label(e);
   }
   function headingSection(text){
     const name=text.trim().replace(/\s+\d+$/,'');
@@ -121,8 +128,9 @@
         const required=!!e.required||e.getAttribute('aria-required')==='true'||markedRequired(label(e))||markedRequired(groupLabel(e));
         const checked=!!e.checked,group_answered=e.type==='radio'&&radios(e).some(other=>other.checked);
         const answered=e.type==='radio'?group_answered:e.type==='checkbox'?checked:e.type==='file'?e.files.length>0:!!value(e).trim();
-        const options=e.tagName==='SELECT'?[...e.options].slice(0,300).map(o=>({label:o.text,value:o.value,disabled:o.disabled})):e.type==='radio'?radios(e).slice(0,300).map(o=>({label:label(o),value:o.value,disabled:o.disabled})):[];
-        fields.push({index:fields.length,token,label:contextualLabel(e),group_label:groupLabel(e),group_answered,options,...recordInfo(e),automation_id:(e.getAttribute('data-automation-id')||'').slice(0,300),automation_path:automationPath(e),phone_prefix:phonePrefix(e),selection_required:searchableCombo(e),selected_values:skillPicker(e)?selectedValues(e):[],name:e.name||'',id:e.id||'',type:skillPicker(e)?'multiselect':customCombo(e)?'combobox':e.type==='select-one'||e.type==='select-multiple'?'select':(e.type||e.getAttribute('role')||'text'),value:value(e),required,checked,valid:(e.validity?e.validity.valid:true)&&e.getAttribute('aria-invalid')!=='true'&&(!required||answered),cross_origin:false});
+        const reference=searchableCombo(e)&&!!e.closest('[data-automation-id=multiSelectContainer]'),selection_confirmed=reference?selectedValues(e).length>0:null;
+        const options=e.tagName==='SELECT'?[...e.options].slice(0,300).map(o=>({label:o.text,value:o.value,disabled:o.disabled})):e.type==='radio'?radios(e).slice(0,300).map(o=>({label:label(o),value:o.value,disabled:o.disabled})):observedChoices.get(e)||[];
+        fields.push({index:fields.length,token,label:contextualLabel(e),group_label:groupLabel(e),group_answered,options,...recordInfo(e),automation_id:(e.getAttribute('data-automation-id')||'').slice(0,300),automation_path:automationPath(e),phone_prefix:phonePrefix(e),selection_required:searchableCombo(e),selection_confirmed,selected_values:skillPicker(e)?selectedValues(e):[],name:e.name||'',id:e.id||'',type:skillPicker(e)?'multiselect':customCombo(e)?'combobox':e.type==='select-one'||e.type==='select-multiple'?'select':(e.type||e.getAttribute('role')||'text'),value:value(e),required,checked,valid:(e.validity?e.validity.valid:true)&&e.getAttribute('aria-invalid')!=='true'&&(!required||answered)&&(!reference||(!required&&!value(e))||selection_confirmed),cross_origin:false});
       }
       for(const control of addButtons(doc)){
         if(add_controls.some(c=>c.section===control.section))continue;
@@ -140,10 +148,11 @@
     for(const node of document.querySelectorAll('script[type="application/ld+json"]')) {
       try { const parsed=JSON.parse(node.textContent);for(const item of (Array.isArray(parsed)?parsed:parsed['@graph']||[parsed]))if(item['@type']==='JobPosting')job={title:String(item.title||job.title).slice(0,500),company:String(item.hiringOrganization?.name||'').slice(0,300),location:String(item.jobLocation?.address?.addressLocality||'').slice(0,300),description:job.description}; }catch{}
     }
-    const stage=document.querySelector('[aria-current=step],[data-automation-id=progressBarActiveStep]')?.textContent.trim()||'';
+    const stage=document.querySelector('[aria-current=step],[data-automation-id=progressBarActiveStep]')?.textContent.trim()||[...document.querySelectorAll('h1,h2')].find(e=>visible(e)&&/^(?:final review|review your application|riepilogo|revisione)\b/i.test(e.textContent.trim()))?.textContent.trim()||'';
     const needs_login=[...document.querySelectorAll('input[type=password]')].some(visible);
-    if(/^(Review|Riepilogo|Revisione)$/i.test(stage))navigation.length=0;
-    snapshot={snapshot_id:crypto.randomUUID(),url:location.href,page_language:document.documentElement.lang||'',stage,needs_login,fields,navigation,add_controls,truncated_controls,job,skipped_frames:skippedFrames,page_text:(document.body?.innerText||'').slice(0,6000)};
+    const final_review=/(?:\breview\b|\briepilogo\b|\brevisione\b|\d(?:review|riepilogo|revisione)\b)/i.test(stage),site_error=[...document.querySelectorAll('[role=alert],[data-automation-id=errorMessage]')].some(e=>visible(e)&&/page error|server error|errore (?:del server|di pagina)/i.test(e.textContent));
+    if(final_review)navigation.length=0;
+    snapshot={snapshot_id:crypto.randomUUID(),url:location.href,page_language:document.documentElement.lang||'',stage,final_review,site_error,needs_login,fields,navigation,add_controls,truncated_controls,job,skipped_frames:skippedFrames,page_text:(document.body?.innerText||'').slice(0,6000)};
     return snapshot;
   }
   function resolve(token,id) {
@@ -165,7 +174,7 @@
           for(let i=0;i<action.count;i++){
             const controls=addButtons(doc).filter(c=>c.section===action.section);
             if(controls.length!==1)throw Error('Add-record control changed or is ambiguous.');
-            const before=recordRows(doc,action.section).length;controls[0].button.click();
+            const before=recordRows(doc,action.section).length;pointAt(controls[0].button);controls[0].button.click();
             for(let attempt=0;attempt<15&&recordRows(doc,action.section).length===before;attempt++)await new Promise(resolve=>setTimeout(resolve,100));
             if(recordRows(doc,action.section).length!==before+1)throw Error('New record was not verified. No click was repeated.');
             added++;
@@ -175,10 +184,13 @@
       return {filled,errors,structure_changed:added>0,snapshot:inspect()};
     }
     for(const action of plan.actions) {
+      const old=snapshot.fields.find(f=>f.token===action.token);
       try {
         const {element:e}=resolve(action.token,plan.snapshot_id);
-        const old=snapshot.fields.find(f=>f.token===action.token);
         if(!old||value(e)!==old.value||['checkbox','radio'].includes(e.type)&&e.checked!==old.checked)throw Error('User/page modified this field; inspect again.');
+        // A preceding country-code action may have changed the phone context since planning.
+        if(action.source==='profile:phone'&&action.value?.startsWith('+')){const prefix=phonePrefix(e),digits=action.value.replace(/[^\d+]/g,'');if(prefix&&digits.startsWith(prefix))action.value=digits.slice(prefix.length);}
+        pointAt(e);e.focus();
         if(e.readOnly&&!searchableCombo(e)||['password','file','hidden','submit'].includes(e.type)||e.type==='button'&&!customCombo(e))throw Error('Control requires manual interaction.');
         if(action.values){
           if(!skillPicker(e)||!Array.isArray(action.values)||action.values.length>20||action.values.some(v=>typeof v!=='string'))throw Error('Invalid multi-select action.');
@@ -201,42 +213,76 @@
         } else if(e.isContentEditable)e.textContent=action.value;
         else { const proto=e.tagName==='TEXTAREA'?e.ownerDocument.defaultView.HTMLTextAreaElement.prototype:e.ownerDocument.defaultView.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(e,action.value); }
         e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
-        e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
+        if(e.ownerDocument.activeElement===e)e.blur();else e.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));
         await settleDOM();
-        const persisted=['checkbox','radio'].includes(e.type)?e.checked===(action.value==='true'):e.tagName==='SELECT'?[e.value,...[...e.selectedOptions].map(o=>o.text)].includes(action.value):customCombo(e)||searchableCombo(e)?choiceKey(value(e))===choiceKey(action.value):value(e)===action.value;
+        if(!e.isConnected)throw Object.assign(Error('Control changed; inspect the current page again.'),{code:'CONTROL_CHANGED'});
+        const persisted=['checkbox','radio'].includes(e.type)?e.checked===(action.value==='true'):e.tagName==='SELECT'?[e.value,...[...e.selectedOptions].map(o=>o.text)].includes(action.value):customCombo(e)||searchableCombo(e)?choiceKey(value(e))===choiceKey(action.value):e.getAttribute('data-automation-id')==='dateSectionMonth-input'&&/^\d{1,2}$/.test(value(e))?Number(value(e))===Number(action.value):value(e)===action.value;
         if(!persisted)throw Error('Value did not persist.');
         filled.push({index:action.index,label:old.label,source:action.source});
-      } catch(error){errors.push({index:action.index,error:error.message});}
+      } catch(error){errors.push({index:action.index,label:[old?.section?old.section+' '+(old.record_index+1):'',old?.label||'Control'].filter(Boolean).join(' → '),code:error.code||'VERIFICATION_FAILED',error:error.message});}
     }
     return {filled,errors,snapshot:inspect()};
   }
   async function pickOption(e,wanted){
     if(!e.isConnected)throw Error('Control changed; analyze again.');
-    if(searchableCombo(e)&&!e.readOnly){Object.getOwnPropertyDescriptor(e.ownerDocument.defaultView.HTMLInputElement.prototype,'value').set.call(e,wanted);e.dispatchEvent(new Event('input',{bubbles:true}));}
-    e.click();
+    const doc=e.ownerDocument,prior=e.value;
+    const key=(element,name)=>{for(const type of ['keydown','keyup'])element.dispatchEvent(new doc.defaultView.KeyboardEvent(type,{key:name,code:name,bubbles:true,cancelable:true}));};
+    // Close the preceding portal before opening this control. Never select from a different open menu.
+    if(doc.activeElement&&doc.activeElement!==e)key(doc.activeElement,'Escape');
+    for(const other of doc.querySelectorAll('[role=combobox][aria-expanded=true],button[aria-haspopup=listbox][aria-expanded=true]'))if(other!==e)key(other,'Escape');
+    e.scrollIntoView({block:'center'});e.focus();e.click();
+    if(searchableCombo(e)&&!e.readOnly){Object.getOwnPropertyDescriptor(doc.defaultView.HTMLInputElement.prototype,'value').set.call(e,wanted);e.dispatchEvent(new Event('input',{bubbles:true}));}
     const container=e.closest('[data-automation-id=multiSelectContainer]');
-    const popupId=(e.getAttribute('aria-controls')||e.getAttribute('aria-owns')||container?.getAttribute('aria-controls')||'').split(/\s+/)[0],popup=e.ownerDocument.getElementById(popupId);
+    const popupId=(e.getAttribute('aria-controls')||e.getAttribute('aria-owns')||container?.getAttribute('aria-controls')||'').split(/\s+/)[0],popup=doc.getElementById(popupId);
     const filter=popup&&[...popup.querySelectorAll('input')].find(input=>input!==e&&!input.readOnly&&visible(input)&&(input.type==='search'||/search|cerca/i.test(label(input)||input.placeholder)));
     if(filter){Object.getOwnPropertyDescriptor(filter.ownerDocument.defaultView.HTMLInputElement.prototype,'value').set.call(filter,wanted);filter.dispatchEvent(new Event('input',{bubbles:true}));}
-    let options=[];
-    for(let attempt=0;attempt<15;attempt++){
-      const candidates=[...e.ownerDocument.querySelectorAll('[role=listbox],[role=tree]')].filter(visible);
-      const root=e.ownerDocument.getElementById(popupId)||(candidates.length===1?candidates[0]:null);
-      if(!root){await new Promise(resolve=>setTimeout(resolve,100));continue;}
-      options=[...root.querySelectorAll('[role=option]')].filter(o=>visible(o)&&o.getAttribute('aria-disabled')!=='true'&&choiceKey(o.getAttribute('aria-label')||o.textContent)===choiceKey(wanted));
-      if(options.length)break;await new Promise(resolve=>setTimeout(resolve,100));
+    const seen=new Map();let options=[],sentEnter=false,scrollStarted=false;
+    try{
+      for(let attempt=0;attempt<24;attempt++){
+        if(!e.isConnected)throw Object.assign(Error('Control changed; inspect the current page again.'),{code:'CONTROL_CHANGED'});
+        const candidates=[...doc.querySelectorAll('[role=listbox],[role=tree]')].filter(visible);
+        const owned=doc.getElementById(popupId),root=owned&&visible(owned)?owned:(candidates.length===1?candidates[0]:null);
+        const offered=root?[...root.querySelectorAll('[role=option]')].filter(o=>visible(o)&&o.getAttribute('aria-disabled')!=='true'):[];
+        for(const o of offered){const text=(o.getAttribute('aria-label')||o.textContent).trim();if(text)seen.set(text,{label:text,value:text,disabled:false});}
+        observedChoices.set(e,[...seen.values()].slice(0,300));
+        options=offered.filter(o=>choiceKey(o.getAttribute('aria-label')||o.textContent)===choiceKey(wanted));
+        if(options.length>1){observedChoices.set(e,options.map(o=>({label:(o.getAttribute('aria-label')||o.textContent).trim(),value:(o.getAttribute('aria-label')||o.textContent).trim(),disabled:false})));throw Object.assign(Error('Several matching options were offered. Choose the correct one on the page.'),{code:'AMBIGUOUS_OPTION'});}
+        if(options.length===1){pointAt(options[0]);options[0].click();await settleDOM();
+          for(let wait=0;wait<8;wait++){const committed=skillPicker(e)?selectedValues(e).some(v=>choiceKey(v)===choiceKey(wanted)):choiceKey(value(e))===choiceKey(wanted);
+            const reference=e.closest('[data-automation-id=multiSelectContainer]');
+            if(committed&&(!reference||selectedValues(e).some(v=>choiceKey(v)===choiceKey(wanted)))){key(e,'Escape');return;}
+            await new Promise(resolve=>setTimeout(resolve,75));
+          }
+          throw Object.assign(Error('The option was clicked but no committed selection was confirmed.'),{code:'SELECTION_NOT_COMMITTED'});
+        }
+        if(searchableCombo(e)&&!e.readOnly&&!sentEnter&&attempt>=2){key(e,'Enter');sentEnter=true;}
+        if(root&&offered.length&&(!searchableCombo(e)||e.readOnly)){
+          const scroller=[root,...root.querySelectorAll('*')].find(n=>n.clientHeight>0&&n.scrollHeight>n.clientHeight+3&&/auto|scroll/.test(doc.defaultView.getComputedStyle(n).overflowY));
+          if(scroller){
+            if(!scrollStarted){scroller.scrollTop=0;scrollStarted=true;}
+            else if(scroller.scrollTop+scroller.clientHeight<scroller.scrollHeight-2)scroller.scrollTop+=Math.max(30,scroller.clientHeight*.75);
+            else break;
+            scroller.dispatchEvent(new Event('scroll',{bubbles:true}));
+          }
+        }
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      throw Object.assign(Error('No unique verified option matched. Review the offered choices or select on the page.'),{code:'NO_OPTION_MATCH'});
+    }catch(error){
+      key(e,'Escape');
+      if(searchableCombo(e)&&!e.readOnly&&!selectedValues(e).length){Object.getOwnPropertyDescriptor(doc.defaultView.HTMLInputElement.prototype,'value').set.call(e,prior||'');e.dispatchEvent(new Event('input',{bubbles:true}));key(e,'Escape');}
+      throw error;
     }
-    if(options.length!==1)throw Error('Choose this search/dropdown option on the page; no unique verified match was found.');
-    options[0].click();await settleDOM();
   }
   async function next(token,id) {
     const entry=resolve(token,id);if(!navigationName(entry.name))throw Error('Final actions stay manual.');
     const current=inspect();
+    if(current.final_review||current.site_error)return {transition_verified:false,snapshot:current};
     if(current.truncated_controls)throw Error('This page exceeds the inspection limit. Collapse completed records or continue manually.');
     const missing=current.fields.some(f=>f.required&&(f.type==='radio'?!f.group_answered:f.type==='checkbox'?!f.checked:!f.value.trim()));
     if(missing)return {transition_verified:false,snapshot:current};
     if(entry.element.form&&!entry.element.form.checkValidity()){entry.element.form.reportValidity();return {transition_verified:false,snapshot:inspect()};}
-    const before=document.body.innerText;entry.element.click();
+    const before=document.body.innerText;pointAt(entry.element);entry.element.click();
     for(let i=0;i<20;i++){await new Promise(r=>setTimeout(r,100));if(location.href!==snapshot.url||document.body.innerText!==before){
       const rejected=[...document.querySelectorAll('[role=alert],.field-error,.error-message,[data-automation-id=errorMessage]')].some(e=>visible(e)&&/error|invalid|missing|required|errore|obbligatori|non valid|rifiutat/i.test(e.textContent));
       return {transition_verified:!rejected,snapshot:inspect()};
@@ -247,7 +293,7 @@
     const {element:e}=resolve(token,id);if(e.type!=='file')throw Error('Select a file input.');
     return new Promise(resolve=>{
       let timer;
-      const finish=()=>{clearTimeout(timer);e.removeEventListener('change',finish);e.removeEventListener('cancel',finish);resolve({attached:!!e.files.length,filename:e.files[0]?.name||'',snapshot:inspect(),message:e.files.length?'CV selected: '+e.files[0].name:'No new file selected.'});};
+      const finish=()=>{clearTimeout(timer);e.removeEventListener('change',finish);e.removeEventListener('cancel',finish);const rejected=e.files.length&&!e.validity.valid;resolve({attached:!!e.files.length&&!rejected,filename:e.files[0]?.name||'',upload_state:rejected?'rejected':e.files.length?'selected':'empty',snapshot:inspect(),message:rejected?'Upload rejected: '+e.validationMessage:e.files.length?'CV selected: '+e.files[0].name+'. Verify upload acceptance on the page.':'No new file selected.'});};
       e.addEventListener('change',finish,{once:true});e.addEventListener('cancel',finish,{once:true});timer=setTimeout(finish,90000);
       e.scrollIntoView({block:'center'});e.focus();e.click();
     });

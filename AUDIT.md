@@ -80,6 +80,16 @@ Public Workday usage was checked on Accenture's supplied portal, PwC's Milan por
 
 ## Reproduce locally
 
+### Workday catalog and bounded extension agent (2026-11-14, preview 0.4.2)
+
+User regressions exposed gaps not covered by the original native-select record fixtures. The updated fixture now reconstructs Enter-triggered references, portal/virtual menus, split education-year IDs, Overall language controls, committed skills and upload acceptance/rejection. Human-readable field failures replace raw index-only errors. Original grades are not treated as GPA; unknown applicant facts remain unresolved. Public HRM/PwC controls were inspected read-only; anonymous Workday reached Sign In, so authenticated field evidence came from screenshots/local metadata.
+
+The extension now has a bounded observe/plan/act/verify run-to-review loop, local Chrome/backend checkpoints, pause/stop/resume and a visible cursor overlay. Models choose only offered tool IDs; strict Ollama schemas reject malformed or invented choices. Screenshot reasoning is optional, resized, limited to the active authorized tab and still grounded to DOM candidates. No OS cursor, arbitrary scripts, unverified coordinates or automatic final submission is implemented.
+
+The full local suite passes **103 tests** with one existing dependency warning. Real Chromium tests cover EN/IT full runs with manual fact/document/consent checkpoints, panel interruption/reload, ambiguity, replaced controls, server errors and compact final-review labels. Synthetic runs recorded 33 steps / 29 verified actions / zero submissions, with model calls disabled for repeatable end-to-end evidence. Small live 4B/9B text/vision probes separately passed schema-constrained choices. Private reports stay outside Git.
+
+The actual server was backed up and restarted. Hashes of profile, candidate context, saved answers, jobs and existing pairing were unchanged. These checks do not establish universal ATS compatibility or live employer completion. [Detailed evidence](docs/WORKDAY_VERIFICATION.md) records the tested boundaries.
+
 ### Follow-up: real control metadata and Italian portal (2026-11-14)
 
 Local control diagnostics revealed Workday input IDs without record wrappers and an Italian enterprise portal with `Via/Piazza`, `Canale`, native dropdowns and a separate `Prefisso`. The shared mapper and extension now cover these shapes, all four repeated background categories, explicit skills tags, selected-prefix reads, and bounded re-observation after dependent changes. Missing choices and optional questions have review cards; sensitive fields and existing personal defaults remain visible for manual review. The confirmed referral source is stored only for its application URL. No owner facts or supplied private implementation guide were added to source.
